@@ -1,0 +1,3 @@
+[submodule "maceio/ML-OPT-IA-Algorithms"]
+	path = maceio/ML-OPT-IA-Algorithms
+	url = https://github.com/hugoabreu1002/ML-OPT-IA-Algorithms
