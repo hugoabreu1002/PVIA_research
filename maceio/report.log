@@ -31,3 +31,14 @@
 2020-09-09 01:20:27,226 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
 2020-09-09 01:20:27,228 - matplotlib.category - INFO - Using categorical units to plot a list of strings that are all parsable as floats or dates. If these strings should be plotted as numbers, cast to the appropriate data type before plotting.
 2020-12-15 19:22:44,800 - pyswarms.single.local_best - INFO - Optimize for 4 iters with {'c1': 0.5, 'c2': 0.3, 'w': 0.9, 'k': 3, 'p': 2}
+2020-12-15 19:41:37,392 - pyswarms.single.local_best - INFO - Optimize for 4 iters with {'c1': 0.5, 'c2': 0.3, 'w': 0.9, 'k': 3, 'p': 2}
+2020-12-17 09:38:20,500 - root - INFO - Generating grammar tables from C:\Program Files\Python38\lib\lib2to3\Grammar.txt
+2020-12-17 09:38:21,095 - root - INFO - Writing grammar tables to C:\Program Files\Python38\lib\lib2to3\Grammar3.8.6.final.0.pickle
+2020-12-17 09:38:21,097 - root - INFO - Writing failed: [Errno 13] Permission denied: 'C:\\Program Files\\Python38\\lib\\lib2to3\\Grammar3.8.6.final.0.pickle'
+2020-12-17 09:38:21,099 - root - INFO - Generating grammar tables from C:\Program Files\Python38\lib\lib2to3\PatternGrammar.txt
+2020-12-17 09:38:21,104 - root - INFO - Writing grammar tables to C:\Program Files\Python38\lib\lib2to3\PatternGrammar3.8.6.final.0.pickle
+2020-12-17 09:38:21,106 - root - INFO - Writing failed: [Errno 13] Permission denied: 'C:\\Program Files\\Python38\\lib\\lib2to3\\PatternGrammar3.8.6.final.0.pickle'
+2020-12-17 11:18:09,263 - pyswarms.single.local_best - INFO - Optimize for 4 iters with {'c1': 0.5, 'c2': 0.3, 'w': 0.9, 'k': 3, 'p': 2}
+2020-12-17 11:20:10,455 - pyswarms.single.local_best - INFO - Optimize for 4 iters with {'c1': 0.5, 'c2': 0.3, 'w': 0.9, 'k': 3, 'p': 2}
+2020-12-17 11:48:41,328 - pyswarms.single.local_best - INFO - Optimize for 4 iters with {'c1': 0.5, 'c2': 0.3, 'w': 0.9, 'k': 3, 'p': 2}
+2020-12-17 11:51:49,249 - pyswarms.single.local_best - INFO - Optimize for 4 iters with {'c1': 0.5, 'c2': 0.3, 'w': 0.9, 'k': 3, 'p': 2}
