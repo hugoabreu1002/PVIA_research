@@ -11,3 +11,4 @@ __pycache__/
 **/*.pdf
 link_drive_marinho.txt
 maceio/report.log
+**/*.log
