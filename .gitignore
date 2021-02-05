@@ -1,5 +1,4 @@
 *.zip
-floripa/*
 **/hibridmodels/
 **/.ipynb_checkpoints/
 **/APAC_Data/
