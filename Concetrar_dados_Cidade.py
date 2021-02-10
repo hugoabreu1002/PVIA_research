@@ -44,11 +44,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-
     parser.add_argument("-I", "--inputFolder", type=str, help="Folder with .CSV data")
-
     parser.add_argument("-C", "--city", type=str, help="City to concatenate data.")
-
     args = parser.parse_args()
-
     main(args)
