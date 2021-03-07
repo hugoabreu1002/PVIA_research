@@ -9,4 +9,5 @@ in the cities folders:
 
 * maceio
 
-I am separating by city becouse of the data of each one, that is very specific
+I am separating by city becouse of the data of each one, that is very specific.
+This city has an example of 1 day ahead forecast, but 1 day ahead is too much seen that the forecast have to be implemented with 1 hour.
