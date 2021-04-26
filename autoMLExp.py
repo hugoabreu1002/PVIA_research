@@ -11,13 +11,14 @@ from hpsklearn import any_regressor
 from hpsklearn import any_preprocessing
 from hyperopt import tpe
 import pickle
-import autokeras
+import autokeras as ak
 import os
 from matplotlib import pyplot as plt
 from tensorflow.random import set_seed
 import warnings
 from numpy.random import seed
 import tensorflow as tf
+import numpy as np
 
 OMP_NUM_THREADS=1
 warnings.filterwarnings("ignore")
@@ -64,7 +65,8 @@ def applyTPOT(X_train, y_train, X_test, y_test, SavePath, popSize=20, number_Gen
                                             population_size=popSize, #number of individuals to train
                                             cv=kFolders, #number of folds in StratifiedKFold
                                             max_eval_time_mins=TPOTSingleMinutes, #time in minutes for each trial
-                                            max_time_mins=TPOTFullMinutes) #time in minutes for whole optimization
+                                            max_time_mins=TPOTFullMinutes,
+                                            scoring="neg_mean_absolute_error") #time in minutes for whole optimization
     
     pipeline_optimizer.fit(X_train, y_train) #fit the pipeline optimizer - can take a long time
     print("TPOT - Score: ")
@@ -72,6 +74,7 @@ def applyTPOT(X_train, y_train, X_test, y_test, SavePath, popSize=20, number_Gen
     y_hat = pipeline_optimizer.predict(X_test)
     print("MAE: %.4f" % mean_absolute_error(y_hat, y_test))
     pipeline_optimizer.export(SavePath)
+    pickle.dump(pipeline_optimizer, open(SavePath+'.pckl', 'wb'))
 
     return y_hat
 
@@ -91,17 +94,31 @@ def applyHyperOpt(X_train, y_train, X_test, y_test, SavePath, max_evals=100, tri
     print("MAE: %.4f" % mae)
     # summarize the best model
     print(HyperOptModel.best_model())
-    pickle.dump(HyperOptModel, open(SavePath, 'wb'))
+    pickle.dump(HyperOptModel, open(SavePath+".pckl", 'wb'))
 
     return y_hat
     
-def applyAutoKeras(X_train, y_train, X_test, y_test, SavePath, max_trials=100):
-    AutoKerasRegressor = autokeras.StructuredDataRegressor(loss="mean_absolute_error",project_name="structured_data_regressor", max_trials=max_trials)
-    AutoKerasRegressor.fit(x=X_train, y=y_train, epochs=None, callbacks=None, validation_split=0, validation_data=None)
-    AutoKerasRegressor.export_model(SavePath)
-    y_hat = AutoKerasRegressor.predict(X_test)
+def applyAutoKeras(X_train, y_train, X_test, y_test, SavePath, max_trials=100, epochs=300):
+    
+    input_node = ak.StructuredDataInput()
+    output_node = ak.DenseBlock()(input_node)
+    #output_node = ak.ConvBlock()(output_node)
+    output_node = ak.RegressionHead()(output_node)
+    AKRegressor = ak.AutoModel(
+        inputs=input_node,
+        outputs=output_node,
+        max_trials=max_trials,
+        overwrite=True,
+        tuner="bayesian",
+        project_name="./AutoMLResults/keras_auto_model"
+    )
+    print(" X_train shape: {0}\n y_train shape: {1}\n X_test shape: {2}\n y_test shape: {3}".format(X_train.shape, y_train.shape, X_test.shape, y_test.shape))
+    AKRegressor.fit(x=X_train, y=y_train[:,0],epochs=epochs,verbose=1, batch_size=1, shuffle=False, use_multiprocessing=True)
+    AKRegressor.export_model(SavePath)
+    y_hat = AKRegressor.predict(X_test)
     print("AUTOKERAS - Score: ")
-    print("MAE: %.4f" % mean_absolute_error(y_hat, y_test))    
+    print("MAE: %.4f" % mean_absolute_error(y_hat, y_test[:,0]))
+        
     return y_hat
 
 def executeForCity(city, plot=True):
@@ -111,20 +128,20 @@ def executeForCity(city, plot=True):
     gen, genscaler = scaleData(gen)
     exog, _ = scaleData(exog)
     X_train, y_train, X_test, y_test = train_test_split_with_Exog(gen[:,0], exog, 24, [80,20])
-    print("TPOT Evaluation...")
-    y_hat_tpot = applyTPOT(X_train, y_train, X_test, y_test, "./AutoMLResults/tpotModel_{0}".format(city), popSize=5, number_Generations=1)
-    print("HYPEROPT Evaluation...")
-    y_hat_hyperopt = applyHyperOpt(X_train, y_train, X_test, y_test, "./AutoMLResults/hyperoptModel_{0}".format(city), max_evals=5)
+    #print("TPOT Evaluation...")
+    #y_hat_tpot = applyTPOT(X_train, y_train, X_test, y_test, "./AutoMLResults/tpotModel_{0}".format(city), popSize=5, number_Generations=1)
+    # print("HYPEROPT Evaluation...")
+    # y_hat_hyperopt = applyHyperOpt(X_train, y_train, X_test, y_test, "./AutoMLResults/hyperoptModel_{0}".format(city), max_evals=10)
     print("AUTOKERAS Evaluation...")
-    y_hat_autokeras = applyAutoKeras(X_train, y_train, X_test, y_test, "./AutoMLResults/autokerastModel_{0}".format(city), max_trials=5)
+    y_hat_autokeras = applyAutoKeras(X_train, y_train, X_test, y_test, "./AutoMLResults/autokerastModel_{0}".format(city), max_trials=20)
 
     if plot:
         _, ax = plt.subplots(1,1, figsize=(14,7), dpi=300)
         ticks_X = df_inmet.data.astype('str') + '-' + df_inmet.hora.astype('str')
         len_dt = len(y_test)
         ticks_X = ticks_X[-len_dt:]
-        ax.plot(ticks_X, genscaler.inverse_transform(y_hat_tpot[-len_dt:].reshape(-1, 1)), 'y--', label='TPOT')
-        ax.plot(ticks_X, genscaler.inverse_transform(y_hat_hyperopt[-len_dt:].reshape(-1, 1)), 'r--', label='HYPEROPT')
+        # ax.plot(ticks_X, genscaler.inverse_transform(y_hat_tpot[-len_dt:].reshape(-1, 1)), 'y--', label='TPOT')
+        # ax.plot(ticks_X, genscaler.inverse_transform(y_hat_hyperopt[-len_dt:].reshape(-1, 1)), 'r--', label='HYPEROPT')
         ax.plot(ticks_X, genscaler.inverse_transform(y_hat_autokeras[-len_dt:].reshape(-1, 1)), 'b--', label='AUTOKERAS')
         ax.plot(ticks_X, genscaler.inverse_transform(y_test.reshape(-1, 1)), 'k', label='Original')
         plt.xticks(ticks_X[::3], rotation=45, ha='right', fontsize=12)
@@ -146,7 +163,7 @@ def main(args):
 
 if __name__ == '__main__':
     CLI=argparse.ArgumentParser()
-    CLI.add_argument( "--listaCidades",  # name on the CLI - drop the `--` for positional/required parameters
+    CLI.add_argument( "-l", "--listaCidades",  # name on the CLI - drop the `--` for positional/required parameters
                      nargs="*",  # 0 or more values expected => creates a list
                      type=str,
                      default=["maceio", "floripa", "bomJesusDaLapaBA"],  # default if nothing is provided
