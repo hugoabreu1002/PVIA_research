@@ -1,4 +1,6 @@
 import pickle
+
+from tensorflow.python.training.tracking.util import add_variable
 from mlopt.TimeSeriesUtils import train_test_split_with_Exog
 import pandas as pd
 from sklearn.preprocessing import MaxAbsScaler
@@ -20,9 +22,9 @@ from numpy.random import seed
 import tensorflow as tf
 import numpy as np
 
-OMP_NUM_THREADS=1
+# OMP_NUM_THREADS=1
 warnings.filterwarnings("ignore")
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 seed(1)
 set_seed(2)
@@ -43,9 +45,9 @@ def loadData(csvFile, serie_column='radiacao_global_wpm2',
             df_inmet[c] = df_inmet[c].apply(lambda x: float(str(x).replace(",","."))).fillna(method='ffill')
     
 
-    ultimoas_horas = 15*24
+    ultimas_horas = 15*24
     posicao_final=len(df_inmet)-1
-    posicao_inicial=posicao_final - ultimoas_horas
+    posicao_inicial=posicao_final - ultimas_horas
     exog = df_inmet[exogenous_columns].iloc[posicao_inicial:,:]
     gen = df_inmet[serie_column].iloc[posicao_inicial:].values.reshape(-1,1)
     print("data hora inicial: ", df_inmet.iloc[posicao_inicial,:].data, df_inmet.iloc[posicao_inicial,:].hora,
@@ -74,7 +76,6 @@ def applyTPOT(X_train, y_train, X_test, y_test, SavePath, popSize=20, number_Gen
     y_hat = pipeline_optimizer.predict(X_test)
     print("MAE: %.4f" % mean_absolute_error(y_hat, y_test))
     pipeline_optimizer.export(SavePath)
-    pickle.dump(pipeline_optimizer, open(SavePath+'.pckl', 'wb'))
 
     return y_hat
 
@@ -82,7 +83,6 @@ def applyHyperOpt(X_train, y_train, X_test, y_test, SavePath, max_evals=100, tri
     HyperOptModel = HyperoptEstimator(regressor=any_regressor('reg'),
                               preprocessing=any_preprocessing('pre'),
                               loss_fn=mean_absolute_error,
-                              algo=tpe.suggest,
                               max_evals=max_evals,
                               trial_timeout=trial_timeout)
     # perform the search
@@ -114,34 +114,40 @@ def applyAutoKeras(X_train, y_train, X_test, y_test, SavePath, max_trials=100, e
     )
     print(" X_train shape: {0}\n y_train shape: {1}\n X_test shape: {2}\n y_test shape: {3}".format(X_train.shape, y_train.shape, X_test.shape, y_test.shape))
     AKRegressor.fit(x=X_train, y=y_train[:,0],epochs=epochs,verbose=1, batch_size=1, shuffle=False, use_multiprocessing=True)
-    AKRegressor.export_model(SavePath)
+    AKRegressor.export_model()
     y_hat = AKRegressor.predict(X_test)
     print("AUTOKERAS - Score: ")
     print("MAE: %.4f" % mean_absolute_error(y_hat, y_test[:,0]))
         
     return y_hat
 
-def executeForCity(city, plot=True):
-    csv_name = list(filter(lambda x: "historical" in x, os.listdir(city)))[0]
+def executeForCity(city, citiesRootFolder, plot=True):
+    cityDir = "{0}/{1}".format(citiesRootFolder, city)
+    csv_name = list(filter(lambda x: "historical" in x, os.listdir(cityDir)))[0]
     print("City {0}, CSV {1}".format(city, csv_name))
-    gen, exog, df_inmet = loadData(city+os.sep+csv_name)
+    gen, exog, df_inmet = loadData(citiesRootFolder+city+os.sep+csv_name)
     gen, genscaler = scaleData(gen)
     exog, _ = scaleData(exog)
     X_train, y_train, X_test, y_test = train_test_split_with_Exog(gen[:,0], exog, 24, [80,20])
-    #print("TPOT Evaluation...")
-    #y_hat_tpot = applyTPOT(X_train, y_train, X_test, y_test, "./AutoMLResults/tpotModel_{0}".format(city), popSize=5, number_Generations=1)
-    # print("HYPEROPT Evaluation...")
-    # y_hat_hyperopt = applyHyperOpt(X_train, y_train, X_test, y_test, "./AutoMLResults/hyperoptModel_{0}".format(city), max_evals=10)
+    print("TPOT Evaluation...")
+    y_hat_tpot = applyTPOT(X_train, y_train, X_test, y_test, "./AutoMLResults/tpotModel_{0}".format(city), popSize=10, number_Generations=3)
+    print("HYPEROPT Evaluation...")
+    y_hat_hyperopt = applyHyperOpt(X_train, y_train, X_test, y_test, "./AutoMLResults/hyperoptModel_{0}".format(city), max_evals=50)
     print("AUTOKERAS Evaluation...")
-    y_hat_autokeras = applyAutoKeras(X_train, y_train, X_test, y_test, "./AutoMLResults/autokerastModel_{0}".format(city), max_trials=20)
+    y_hat_autokeras = applyAutoKeras(X_train, y_train, X_test, y_test, "./AutoMLResults/autokerastModel_{0}".format(city), max_trials=10, epochs=50)
 
+    print("Scores")
+    print("AUTOKERAS - MAE: %.4f" % mean_absolute_error(y_hat_tpot, y_test[:,0]))
+    print("AUTOKERAS - MAE: %.4f" % mean_absolute_error(y_hat_hyperopt, y_test[:,0]))
+    print("AUTOKERAS - MAE: %.4f" % mean_absolute_error(y_hat_autokeras, y_test[:,0]))
+    
     if plot:
         _, ax = plt.subplots(1,1, figsize=(14,7), dpi=300)
         ticks_X = df_inmet.data.astype('str') + '-' + df_inmet.hora.astype('str')
         len_dt = len(y_test)
         ticks_X = ticks_X[-len_dt:]
-        # ax.plot(ticks_X, genscaler.inverse_transform(y_hat_tpot[-len_dt:].reshape(-1, 1)), 'y--', label='TPOT')
-        # ax.plot(ticks_X, genscaler.inverse_transform(y_hat_hyperopt[-len_dt:].reshape(-1, 1)), 'r--', label='HYPEROPT')
+        #ax.plot(ticks_X, genscaler.inverse_transform(y_hat_tpot[-len_dt:].reshape(-1, 1)), 'y--', label='TPOT')
+        ax.plot(ticks_X, genscaler.inverse_transform(y_hat_hyperopt[-len_dt:].reshape(-1, 1)), 'r--', label='HYPEROPT')
         ax.plot(ticks_X, genscaler.inverse_transform(y_hat_autokeras[-len_dt:].reshape(-1, 1)), 'b--', label='AUTOKERAS')
         ax.plot(ticks_X, genscaler.inverse_transform(y_test.reshape(-1, 1)), 'k', label='Original')
         plt.xticks(ticks_X[::3], rotation=45, ha='right', fontsize=12)
@@ -149,20 +155,25 @@ def executeForCity(city, plot=True):
         ax.legend(fontsize=12)
         ax.set_ylabel('W/m2', fontsize=12)
         plt.tight_layout()
-        plt.savefig('./AutoMLResults/AutoMLS_result.png', dpi=300)
+        plt.savefig(citiesRootFolder+"/AutoMLResults/AutoMLS_result.png", dpi=300)
+        plt.show()
 
 def main(args):
+    citiesRootFolder = args.cidadesRootFolder
     citiesFolders = args.listaCidades
-    if not os.path.isdir("./AutoMLResults"):
-        os.mkdir("./AutoMLResults")
+    resultsPath = "{0}/AutoMLResults".format(citiesRootFolder)
+
+    if not os.path.isdir(resultsPath):
+        os.mkdir(resultsPath)
 
     for city in citiesFolders:
-        executeForCity(city)
+        executeForCity(city, citiesRootFolder, True)
     
     return None
 
 if __name__ == '__main__':
     CLI=argparse.ArgumentParser()
+    CLI.add_argument("-crf", "--cidadesRootFolder", type=str, default="./cidades")
     CLI.add_argument( "-l", "--listaCidades",  # name on the CLI - drop the `--` for positional/required parameters
                      nargs="*",  # 0 or more values expected => creates a list
                      type=str,

@@ -13,5 +13,5 @@ link_drive_marinho.txt
 maceio/report.log
 **/*.log
 AutoMLResults/
-structured_data_regressor/
-auto_model/
+**/structured_data_regressor/
+**/auto_model/
