@@ -7,11 +7,10 @@ from sklearn.preprocessing import MaxAbsScaler
 import argparse
 import tpot
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 from hpsklearn import HyperoptEstimator
 from hpsklearn import any_regressor
 from hpsklearn import any_preprocessing
-from hyperopt import tpe
 import pickle
 import autokeras as ak
 import os
@@ -41,18 +40,33 @@ def loadData(csvFile, serie_column='radiacao_global_wpm2',
     df_inmet = pd.read_csv(csvFile, sep=',', encoding = "ISO-8859-1")
 
     for c in df_inmet.columns:
-        if (c not in ['data', 'hora']) and (df_inmet[c].dtype != "float64"):
+        if df_inmet[c].isnull().sum(axis = 0) > len(df_inmet)*0.5:
+            df_inmet.drop(c,inplace=True, axis=1)
+            if c in exogenous_columns:
+                exogenous_columns.remove(c)
+        elif (c not in ['data', 'hora']) and (df_inmet[c].dtype != "float64"):
             df_inmet[c] = df_inmet[c].apply(lambda x: float(str(x).replace(",","."))).fillna(method='ffill')
-    
+        else:
+            df_inmet[c] = df_inmet[c].fillna(method='ffill').fillna(0)
+
+    print(df_inmet.describe())
 
     ultimas_horas = 15*24
     posicao_final=len(df_inmet)-1
     posicao_inicial=posicao_final - ultimas_horas
-    exog = df_inmet[exogenous_columns].iloc[posicao_inicial:,:]
+    exog = df_inmet[exogenous_columns].iloc[posicao_inicial:,:].values
     gen = df_inmet[serie_column].iloc[posicao_inicial:].values.reshape(-1,1)
     print("data hora inicial: ", df_inmet.iloc[posicao_inicial,:].data, df_inmet.iloc[posicao_inicial,:].hora,
         "data hora final: ", df_inmet.iloc[posicao_final,:].data,df_inmet.iloc[posicao_final,:].hora)
 
+    if np.isnan(np.sum(gen)):
+        print("Gen still has nan")
+
+    for i in range(exog.shape[1]):
+        ex_var = exog[i]
+        if np.isnan(np.sum(ex_var)):
+            print("exog still has nan in column ", i)
+    
     return gen, exog, df_inmet
 
 def scaleData(data):
@@ -72,7 +86,7 @@ def applyTPOT(X_train, y_train, X_test, y_test, SavePath, popSize=20, number_Gen
     
     pipeline_optimizer.fit(X_train, y_train) #fit the pipeline optimizer - can take a long time
     print("TPOT - Score: ")
-    print(pipeline_optimizer.score(X_test, y_test)) #print scoring for the pipeline
+    print(-pipeline_optimizer.score(X_test, y_test)) #print scoring for the pipeline
     y_hat = pipeline_optimizer.predict(X_test)
     print("MAE: %.4f" % mean_absolute_error(y_hat, y_test))
     pipeline_optimizer.export(SavePath)
@@ -82,7 +96,7 @@ def applyTPOT(X_train, y_train, X_test, y_test, SavePath, popSize=20, number_Gen
 def applyHyperOpt(X_train, y_train, X_test, y_test, SavePath, max_evals=100, trial_timeout=100):
     HyperOptModel = HyperoptEstimator(regressor=any_regressor('reg'),
                               preprocessing=any_preprocessing('pre'),
-                              loss_fn=mean_absolute_error,
+                              loss_fn=mean_squared_error,
                               max_evals=max_evals,
                               trial_timeout=trial_timeout)
     # perform the search
@@ -121,20 +135,42 @@ def applyAutoKeras(X_train, y_train, X_test, y_test, SavePath, max_trials=100, e
         
     return y_hat
 
-def executeForCity(city, citiesRootFolder, plot=True):
+def saveResultFigure(df_inmet, genscaler, y_test, y_hats, labels, city_save_path):
+    _, ax = plt.subplots(1,1, figsize=(14,7), dpi=300)
+    ticks_X = df_inmet.data.astype('str') + '-' + df_inmet.hora.astype('str')
+    len_dt = len(y_test)
+    ticks_X = ticks_X[-len_dt:]
+    for y_hat, plotlabel in zip(y_hats, labels):
+        ax.plot(ticks_X, genscaler.inverse_transform(y_hat[-len_dt:].reshape(-1, 1)), 'y--', label=plotlabel)
+
+    ax.plot(ticks_X, genscaler.inverse_transform(y_test.reshape(-1, 1)), 'k', label='Original')
+    plt.xticks(ticks_X[::3], rotation=45, ha='right', fontsize=12)
+    ax.grid(axis='x')
+    ax.legend(fontsize=12)
+    ax.set_ylabel('W/m2', fontsize=12)
+    plt.tight_layout()
+    plt.savefig(city_save_path+"/AutoMLS_result.png", dpi=300)
+    plt.show()
+
+def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
     cityDir = "{0}/{1}".format(citiesRootFolder, city)
     csv_name = list(filter(lambda x: "historical" in x, os.listdir(cityDir)))[0]
     print("City {0}, CSV {1}".format(city, csv_name))
+    
     gen, exog, df_inmet = loadData(citiesRootFolder+city+os.sep+csv_name)
     gen, genscaler = scaleData(gen)
-    exog, _ = scaleData(exog)
+    exog = genscaler.fit_transform(exog)
     X_train, y_train, X_test, y_test = train_test_split_with_Exog(gen[:,0], exog, 24, [80,20])
+
+    print("Cidade: ", city)
     print("TPOT Evaluation...")
-    y_hat_tpot = applyTPOT(X_train, y_train, X_test, y_test, "./AutoMLResults/tpotModel_{0}".format(city), popSize=10, number_Generations=3)
+    y_hat_tpot = applyTPOT(X_train, y_train, X_test, y_test, city_save_path+"/tpotModel_{0}".format(city), popSize=10, number_Generations=3)
+
     print("HYPEROPT Evaluation...")
-    y_hat_hyperopt = applyHyperOpt(X_train, y_train, X_test, y_test, "./AutoMLResults/hyperoptModel_{0}".format(city), max_evals=50)
+    y_hat_hyperopt = applyHyperOpt(X_train, y_train, X_test, y_test, city_save_path+"/hyperoptModel_{0}".format(city), max_evals=50)
+
     print("AUTOKERAS Evaluation...")
-    y_hat_autokeras = applyAutoKeras(X_train, y_train, X_test, y_test, "./AutoMLResults/autokerastModel_{0}".format(city), max_trials=10, epochs=50)
+    y_hat_autokeras = applyAutoKeras(X_train, y_train, X_test, y_test, city_save_path+"/autokerastModel_{0}".format(city), max_trials=10, epochs=50)
 
     print("Scores")
     print("AUTOKERAS - MAE: %.4f" % mean_absolute_error(y_hat_tpot, y_test[:,0]))
@@ -142,32 +178,21 @@ def executeForCity(city, citiesRootFolder, plot=True):
     print("AUTOKERAS - MAE: %.4f" % mean_absolute_error(y_hat_autokeras, y_test[:,0]))
     
     if plot:
-        _, ax = plt.subplots(1,1, figsize=(14,7), dpi=300)
-        ticks_X = df_inmet.data.astype('str') + '-' + df_inmet.hora.astype('str')
-        len_dt = len(y_test)
-        ticks_X = ticks_X[-len_dt:]
-        #ax.plot(ticks_X, genscaler.inverse_transform(y_hat_tpot[-len_dt:].reshape(-1, 1)), 'y--', label='TPOT')
-        ax.plot(ticks_X, genscaler.inverse_transform(y_hat_hyperopt[-len_dt:].reshape(-1, 1)), 'r--', label='HYPEROPT')
-        ax.plot(ticks_X, genscaler.inverse_transform(y_hat_autokeras[-len_dt:].reshape(-1, 1)), 'b--', label='AUTOKERAS')
-        ax.plot(ticks_X, genscaler.inverse_transform(y_test.reshape(-1, 1)), 'k', label='Original')
-        plt.xticks(ticks_X[::3], rotation=45, ha='right', fontsize=12)
-        ax.grid(axis='x')
-        ax.legend(fontsize=12)
-        ax.set_ylabel('W/m2', fontsize=12)
-        plt.tight_layout()
-        plt.savefig(citiesRootFolder+"/AutoMLResults/AutoMLS_result.png", dpi=300)
-        plt.show()
+        saveResultFigure(df_inmet, genscaler, y_test,
+                         [y_hat_tpot, y_hat_hyperopt, y_hat_autokeras],
+                         ["TPOT", "HYPEROPT", "AUTOKERAS"], city_save_path)
+
 
 def main(args):
     citiesRootFolder = args.cidadesRootFolder
     citiesFolders = args.listaCidades
-    resultsPath = "{0}/AutoMLResults".format(citiesRootFolder)
-
-    if not os.path.isdir(resultsPath):
-        os.mkdir(resultsPath)
 
     for city in citiesFolders:
-        executeForCity(city, citiesRootFolder, True)
+        cityResultsPath = "{0}/{1}/AutoMLResults".format(citiesRootFolder, city)
+        if not os.path.isdir(cityResultsPath):
+            os.mkdir(cityResultsPath)
+
+        executeForCity(city, citiesRootFolder, cityResultsPath, True)
     
     return None
 
