@@ -49,7 +49,7 @@ def loadData(csvFile, serie_column='radiacao_global_wpm2',
         else:
             df_inmet[c] = df_inmet[c].fillna(method='ffill').fillna(0)
 
-    print(df_inmet.describe())
+    #print(df_inmet.describe())
 
     ultimas_horas = 15*24
     posicao_final=len(df_inmet)-1
@@ -60,20 +60,20 @@ def loadData(csvFile, serie_column='radiacao_global_wpm2',
         "data hora final: ", df_inmet.iloc[posicao_final,:].data,df_inmet.iloc[posicao_final,:].hora)
 
     if np.isnan(np.sum(gen)):
-        print("Gen still has nan")
+        raise("Gen still has nan")
 
     for i in range(exog.shape[1]):
         ex_var = exog[i]
         if np.isnan(np.sum(ex_var)):
-            print("exog still has nan in column ", i)
+            raise("exog still has nan in column {0}".format(i))
     
     return gen, exog, df_inmet
 
 def scaleData(data):
-    MaxAbsScaler_data = MaxAbsScaler().fit(data)
-    scaled_data = MaxAbsScaler_data.transform(data)
+    maxAbsScaler_data = MaxAbsScaler().fit(data)
+    scaled_data = maxAbsScaler_data.transform(data)
 
-    return scaled_data, MaxAbsScaler_data
+    return scaled_data, maxAbsScaler_data
 
 
 def applyTPOT(X_train, y_train, X_test, y_test, SavePath, popSize=20, number_Generations=5, kFolders=5, TPOTSingleMinutes=1, TPOTFullMinutes = 10):
@@ -124,10 +124,10 @@ def applyAutoKeras(X_train, y_train, X_test, y_test, SavePath, max_trials=100, e
         max_trials=max_trials,
         overwrite=True,
         tuner="bayesian",
-        project_name="./AutoMLResults/keras_auto_model"
+        project_name=SavePath+"/keras_auto_model"
     )
     print(" X_train shape: {0}\n y_train shape: {1}\n X_test shape: {2}\n y_test shape: {3}".format(X_train.shape, y_train.shape, X_test.shape, y_test.shape))
-    AKRegressor.fit(x=X_train, y=y_train[:,0],epochs=epochs,verbose=1, batch_size=1, shuffle=False, use_multiprocessing=True)
+    AKRegressor.fit(x=X_train, y=y_train[:,0],epochs=epochs,verbose=1, batch_size=int(X_train.shape[0]/10), shuffle=False, use_multiprocessing=True)
     AKRegressor.export_model()
     y_hat = AKRegressor.predict(X_test)
     print("AUTOKERAS - Score: ")
@@ -136,51 +136,76 @@ def applyAutoKeras(X_train, y_train, X_test, y_test, SavePath, max_trials=100, e
     return y_hat
 
 def saveResultFigure(df_inmet, genscaler, y_test, y_hats, labels, city_save_path):
+    logResults = ""
+    logResults += "Scores" + "\n"
+    print("Scores")
+    
     _, ax = plt.subplots(1,1, figsize=(14,7), dpi=300)
     ticks_X = df_inmet.data.astype('str') + '-' + df_inmet.hora.astype('str')
     len_dt = len(y_test)
-    ticks_X = ticks_X[-len_dt:]
-    for y_hat, plotlabel in zip(y_hats, labels):
-        ax.plot(ticks_X, genscaler.inverse_transform(y_hat[-len_dt:].reshape(-1, 1)), 'y--', label=plotlabel)
-
+    ticks_X = ticks_X[-len_dt:].values
     ax.plot(ticks_X, genscaler.inverse_transform(y_test.reshape(-1, 1)), 'k', label='Original')
+
+    for y_hat, plotlabel in zip(y_hats, labels):
+        logResults += "{0} ".format(plotlabel) + "- MAE: %.4f" % mean_absolute_error(y_hat, y_test[:,0]) + "\n"
+        trueScale_yhat = genscaler.inverse_transform(y_hat[-len_dt:].reshape(-1, 1))
+        ax.plot(ticks_X, trueScale_yhat, label=plotlabel)
+
     plt.xticks(ticks_X[::3], rotation=45, ha='right', fontsize=12)
     ax.grid(axis='x')
     ax.legend(fontsize=12)
     ax.set_ylabel('W/m2', fontsize=12)
     plt.tight_layout()
     plt.savefig(city_save_path+"/AutoMLS_result.png", dpi=300)
-    plt.show()
+    #plt.show()
+
+    return logResults
 
 def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
     cityDir = "{0}/{1}".format(citiesRootFolder, city)
     csv_name = list(filter(lambda x: "historical" in x, os.listdir(cityDir)))[0]
+    outputLog = ""
+    outputLog += "City {0}, CSV {1}".format(city, csv_name) + "\n"
     print("City {0}, CSV {1}".format(city, csv_name))
     
     gen, exog, df_inmet = loadData(citiesRootFolder+city+os.sep+csv_name)
     gen, genscaler = scaleData(gen)
-    exog = genscaler.fit_transform(exog)
+    print("scaled gen shape", gen.shape)
+    exog, exogscaler = scaleData(exog)
     X_train, y_train, X_test, y_test = train_test_split_with_Exog(gen[:,0], exog, 24, [80,20])
 
-    print("Cidade: ", city)
-    print("TPOT Evaluation...")
-    y_hat_tpot = applyTPOT(X_train, y_train, X_test, y_test, city_save_path+"/tpotModel_{0}".format(city), popSize=10, number_Generations=3)
+    y_hats = []
+    labels = []
 
-    print("HYPEROPT Evaluation...")
-    y_hat_hyperopt = applyHyperOpt(X_train, y_train, X_test, y_test, city_save_path+"/hyperoptModel_{0}".format(city), max_evals=50)
+    try:
+        print("TPOT Evaluation...")
+        y_hat_tpot = applyTPOT(X_train, y_train, X_test, y_test, city_save_path+"/tpotModel_{0}".format(city), popSize=10, number_Generations=5)
+        y_hats.append(y_hat_tpot)
+        labels.append("TPOT")
+    except:
+        pass
 
-    print("AUTOKERAS Evaluation...")
-    y_hat_autokeras = applyAutoKeras(X_train, y_train, X_test, y_test, city_save_path+"/autokerastModel_{0}".format(city), max_trials=10, epochs=50)
-
-    print("Scores")
-    print("AUTOKERAS - MAE: %.4f" % mean_absolute_error(y_hat_tpot, y_test[:,0]))
-    print("AUTOKERAS - MAE: %.4f" % mean_absolute_error(y_hat_hyperopt, y_test[:,0]))
-    print("AUTOKERAS - MAE: %.4f" % mean_absolute_error(y_hat_autokeras, y_test[:,0]))
+    try:
+        print("HYPEROPT Evaluation...")
+        y_hat_hyperopt = applyHyperOpt(X_train, y_train, X_test, y_test, city_save_path+"/hyperoptModel_{0}".format(city), max_evals=50)
+        y_hats.append(y_hat_hyperopt)
+        labels.append("HYPEROPT")
+    except:
+        pass
+    
+    try:
+        print("AUTOKERAS Evaluation...")
+        y_hat_autokeras = applyAutoKeras(X_train, y_train, X_test, y_test, city_save_path+"/autokerastModel_{0}".format(city), max_trials=2, epochs=50)
+        y_hats.append(y_hat_autokeras)
+        labels.append("AUTOKERAS")
+    except:
+        pass
     
     if plot:
-        saveResultFigure(df_inmet, genscaler, y_test,
-                         [y_hat_tpot, y_hat_hyperopt, y_hat_autokeras],
-                         ["TPOT", "HYPEROPT", "AUTOKERAS"], city_save_path)
+        outputLog += saveResultFigure(df_inmet, genscaler, y_test, y_hats, labels, city_save_path)
+
+    with open(city_save_path+"/results.txt", "w") as text_file:
+        text_file.write(outputLog)
 
 
 def main(args):
@@ -202,7 +227,7 @@ if __name__ == '__main__':
     CLI.add_argument( "-l", "--listaCidades",  # name on the CLI - drop the `--` for positional/required parameters
                      nargs="*",  # 0 or more values expected => creates a list
                      type=str,
-                     default=["maceio", "floripa", "bomJesusDaLapaBA"],  # default if nothing is provided
+                     default=["recife", "natal"],  # default if nothing is provided
                      )
     
     args = CLI.parse_args()
