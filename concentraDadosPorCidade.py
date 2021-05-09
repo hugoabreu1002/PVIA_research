@@ -6,7 +6,7 @@ import argparse
 def main(args):
 
     os.chdir(args.inputFolder)
-    all_filenames = [i for i in glob.glob('*{}*.csv'.format(args.city))]
+    all_filenames = [i for i in glob.glob('*{0}*.csv'.format(args.city))]
 
     #combine all files in the list
     colunas = ["data", "hora", "preciptacao_total_mm", "pressao_atm_mB", "pressao_atm_max_mB",\
@@ -16,7 +16,10 @@ def main(args):
             "vento_velocidade_mps"]
 
     combined_csv = pd.read_csv(all_filenames[0], sep=';', encoding = "ISO-8859-1")
-    combined_csv.drop(["Unnamed: 19"], inplace=True, axis=1)
+    try:
+        combined_csv.drop(["Unnamed: 19"], inplace=True, axis=1)
+    except Exception:
+        pass
     combined_csv.columns = colunas
     combined_csv["ano"] = combined_csv["data"].apply(lambda x: str(x).replace("/","-")[0:4])
     combined_csv["mes"] = combined_csv["data"].apply(lambda x: str(x).replace("/","-")[5:7])
@@ -27,7 +30,10 @@ def main(args):
         print(f)
         
         df = pd.read_csv(f, sep=';', encoding = "ISO-8859-1")
-        df.drop(["Unnamed: 19"], inplace=True, axis=1)
+        try:
+            df.drop(["Unnamed: 19"], inplace=True, axis=1)
+        except Exception:
+            pass
         df.columns = colunas
         df["data"] = df["data"].apply(lambda x: str(x).replace("/","-"))
         df["ano"] = df["data"].apply(lambda x: str(x).replace("/","-")[0:4])

@@ -1,12 +1,11 @@
 import pickle
-
 from tensorflow.python.training.tracking.util import add_variable
 from mlopt.TimeSeriesUtils import train_test_split_with_Exog
+from mlopt.TimeSeriesUtils import train_test_split as train_test_split_noExog
 import pandas as pd
 from sklearn.preprocessing import MaxAbsScaler
 import argparse
 import tpot
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from hpsklearn import HyperoptEstimator
 from hpsklearn import any_regressor
@@ -15,31 +14,27 @@ import pickle
 import autokeras as ak
 import os
 from matplotlib import pyplot as plt
-from tensorflow.random import set_seed
 import warnings
 from numpy.random import seed
 import tensorflow as tf
 import numpy as np
+from mlopt.ACOLSTM import ACOLSTM
 
 # OMP_NUM_THREADS=1
-warnings.filterwarnings("ignore")
 # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
-seed(1)
-set_seed(2)
-physical_devices = tf.config.list_physical_devices('GPU')
-try:
-    tf.config.experimental.set_memory_growth(physical_devices[0], True)
-except:
-    pass
+# physical_devices = tf.config.list_physical_devices('GPU')
+# try:
+#     tf.config.experimental.set_memory_growth(physical_devices[0], True)
+# except:
+#     pass
 
 def loadData(csvFile, serie_column='radiacao_global_wpm2',
              exogenous_columns = ['preciptacao_total_mm', 'temp_ar_bulbo_seco_c',
                                   'umidade_relativa_prcnt','vento_velocidade_mps', 'vento_rajada_max_mps']):
 
     df_inmet = pd.read_csv(csvFile, sep=',', encoding = "ISO-8859-1")
-
-    for c in df_inmet.columns:
+    
+    for c in exogenous_columns:
         if df_inmet[c].isnull().sum(axis = 0) > len(df_inmet)*0.5:
             df_inmet.drop(c,inplace=True, axis=1)
             if c in exogenous_columns:
@@ -49,13 +44,14 @@ def loadData(csvFile, serie_column='radiacao_global_wpm2',
         else:
             df_inmet[c] = df_inmet[c].fillna(method='ffill').fillna(0)
 
-    #print(df_inmet.describe())
+    if df_inmet[serie_column].dtypes == "object":
+        df_inmet[serie_column] = df_inmet[serie_column].apply(lambda x: float(str(x).replace(",","."))).fillna(0)
 
-    ultimas_horas = 15*24
-    posicao_final=len(df_inmet)-1
-    posicao_inicial=posicao_final - ultimas_horas
-    exog = df_inmet[exogenous_columns].iloc[posicao_inicial:,:].values
-    gen = df_inmet[serie_column].iloc[posicao_inicial:].values.reshape(-1,1)
+    print(df_inmet.describe())
+    posicao_final=15*24
+    posicao_inicial=0
+    exog = df_inmet[exogenous_columns].iloc[posicao_inicial:posicao_final,:].values
+    gen = df_inmet[serie_column].iloc[posicao_inicial:posicao_final].values.reshape(-1,1)
     print("data hora inicial: ", df_inmet.iloc[posicao_inicial,:].data, df_inmet.iloc[posicao_inicial,:].hora,
         "data hora final: ", df_inmet.iloc[posicao_final,:].data,df_inmet.iloc[posicao_final,:].hora)
 
@@ -135,6 +131,17 @@ def applyAutoKeras(X_train, y_train, X_test, y_test, SavePath, max_trials=100, e
         
     return y_hat
 
+def applyACOLSTM(X_train, y_train, X_test, y_test, SavePath, antNumber=10, antTours=10):
+    options_ACO={'antNumber':antNumber, 'antTours':antTours, 'alpha':1, 'beta':1, 'rho':0.5, 'Q':1}
+    lstmOptimizer = ACOLSTM(X_train, y_train, X_test, y_test, 1 ,options_ACO=options_ACO, verbose=True)
+    final_model, y_hat = lstmOptimizer.optimize(Layers_Qtd=[[40, 50, 60, 70], [20, 25, 30], [5, 10, 15]], epochs=[100, 200, 300])
+    final_model.save(SavePath)
+
+    print("ACOLSTM - Score: ")
+    print("MAE: %.4f" % mean_absolute_error(y_hat, y_test[:,0]))
+
+    return y_hat
+
 def saveResultFigure(df_inmet, genscaler, y_test, y_hats, labels, city_save_path):
     logResults = ""
     logResults += "Scores" + "\n"
@@ -165,7 +172,7 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
     cityDir = "{0}/{1}".format(citiesRootFolder, city)
     csv_name = list(filter(lambda x: "historical" in x, os.listdir(cityDir)))[0]
     outputLog = ""
-    outputLog += "City {0}, CSV {1}".format(city, csv_name) + "\n"
+    outputLog += "City: {0}, CSV: {1}".format(city, csv_name) + "\n"
     print("City {0}, CSV {1}".format(city, csv_name))
     
     gen, exog, df_inmet = loadData(citiesRootFolder+city+os.sep+csv_name)
@@ -182,7 +189,7 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
         y_hat_tpot = applyTPOT(X_train, y_train, X_test, y_test, city_save_path+"/tpotModel_{0}".format(city), popSize=10, number_Generations=5)
         y_hats.append(y_hat_tpot)
         labels.append("TPOT")
-    except:
+    except Exception:
         pass
 
     try:
@@ -190,7 +197,7 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
         y_hat_hyperopt = applyHyperOpt(X_train, y_train, X_test, y_test, city_save_path+"/hyperoptModel_{0}".format(city), max_evals=50)
         y_hats.append(y_hat_hyperopt)
         labels.append("HYPEROPT")
-    except:
+    except Exception:
         pass
     
     try:
@@ -198,7 +205,19 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
         y_hat_autokeras = applyAutoKeras(X_train, y_train, X_test, y_test, city_save_path+"/autokerastModel_{0}".format(city), max_trials=2, epochs=50)
         y_hats.append(y_hat_autokeras)
         labels.append("AUTOKERAS")
-    except:
+    except Exception:
+        pass
+
+
+    X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm = train_test_split_noExog(gen[:,0], 23,
+                                                                        tr_vd_ts_percents = [80, 20],
+                                                                        print_shapes = True)
+    try:
+        print("ACOLSTM Evaluation...")
+        y_hat_acolstm = applyACOLSTM(X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm, city_save_path+"/acolstmModel_{0}".format(city), antNumber=10, antTours=4)
+        y_hats.append(y_hat_acolstm)
+        labels.append("ACOLSTM")
+    except Exception:
         pass
     
     if plot:
@@ -222,6 +241,7 @@ def main(args):
     return None
 
 if __name__ == '__main__':
+    warnings.filterwarnings("ignore")
     CLI=argparse.ArgumentParser()
     CLI.add_argument("-crf", "--cidadesRootFolder", type=str, default="./cidades")
     CLI.add_argument( "-l", "--listaCidades",  # name on the CLI - drop the `--` for positional/required parameters
