@@ -1,12 +1,11 @@
 import pickle
-from tensorflow.python.training.tracking.util import add_variable
 from mlopt.TimeSeriesUtils import train_test_split_with_Exog
 from mlopt.TimeSeriesUtils import train_test_split as train_test_split_noExog
 import pandas as pd
 from sklearn.preprocessing import MaxAbsScaler
 import argparse
 import tpot
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
 from hpsklearn import HyperoptEstimator
 from hpsklearn import any_regressor
 from hpsklearn import any_preprocessing
@@ -20,34 +19,28 @@ import tensorflow as tf
 import numpy as np
 from mlopt.ACOLSTM import ACOLSTM
 
-# OMP_NUM_THREADS=1
-# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-# physical_devices = tf.config.list_physical_devices('GPU')
-# try:
-#     tf.config.experimental.set_memory_growth(physical_devices[0], True)
-# except:
-#     pass
-
 def loadData(csvFile, serie_column='radiacao_global_wpm2',
              exogenous_columns = ['preciptacao_total_mm', 'temp_ar_bulbo_seco_c',
                                   'umidade_relativa_prcnt','vento_velocidade_mps', 'vento_rajada_max_mps']):
 
     df_inmet = pd.read_csv(csvFile, sep=',', encoding = "ISO-8859-1")
-    
-    for c in exogenous_columns:
-        if df_inmet[c].isnull().sum(axis = 0) > len(df_inmet)*0.5:
+    print(exogenous_columns)
+    for c in exogenous_columns.copy():
+        if df_inmet[c].isnull().sum(axis = 0) >= len(df_inmet)*0.5:
+            print("Will drop column " + c)
             df_inmet.drop(c,inplace=True, axis=1)
-            if c in exogenous_columns:
-                exogenous_columns.remove(c)
-        elif (c not in ['data', 'hora']) and (df_inmet[c].dtype != "float64"):
+            exogenous_columns.remove(c)
+        elif df_inmet[c].dtype != "float64":
+            print("Will parser and fill column " + c)
             df_inmet[c] = df_inmet[c].apply(lambda x: float(str(x).replace(",","."))).fillna(method='ffill')
         else:
+            print("Will fill column " + c)
             df_inmet[c] = df_inmet[c].fillna(method='ffill').fillna(0)
 
     if df_inmet[serie_column].dtypes == "object":
         df_inmet[serie_column] = df_inmet[serie_column].apply(lambda x: float(str(x).replace(",","."))).fillna(0)
 
-    print(df_inmet.describe())
+    print(df_inmet[exogenous_columns+[serie_column]].describe())
     posicao_final=15*24
     posicao_inicial=0
     exog = df_inmet[exogenous_columns].iloc[posicao_inicial:posicao_final,:].values
@@ -58,8 +51,9 @@ def loadData(csvFile, serie_column='radiacao_global_wpm2',
     if np.isnan(np.sum(gen)):
         raise("Gen still has nan")
 
+    print(exog)
     for i in range(exog.shape[1]):
-        ex_var = exog[i]
+        ex_var = exog[:,i]
         if np.isnan(np.sum(ex_var)):
             raise("exog still has nan in column {0}".format(i))
     
@@ -81,10 +75,9 @@ def applyTPOT(X_train, y_train, X_test, y_test, SavePath, popSize=20, number_Gen
                                             scoring="neg_mean_absolute_error") #time in minutes for whole optimization
     
     pipeline_optimizer.fit(X_train, y_train) #fit the pipeline optimizer - can take a long time
-    print("TPOT - Score: ")
-    print(-pipeline_optimizer.score(X_test, y_test)) #print scoring for the pipeline
+    print("TPOT - Score: {0}".format(-pipeline_optimizer.score(X_test, y_test)))
     y_hat = pipeline_optimizer.predict(X_test)
-    print("MAE: %.4f" % mean_absolute_error(y_hat, y_test))
+    print("MAE: %.4f" % mean_absolute_error(y_test, y_hat))
     pipeline_optimizer.export(SavePath)
 
     return y_hat
@@ -98,10 +91,10 @@ def applyHyperOpt(X_train, y_train, X_test, y_test, SavePath, max_evals=100, tri
     # perform the search
     HyperOptModel.fit(X_train, y_train)
     # summarize performance
-    mae = HyperOptModel.score(X_test, y_test)
+    score = HyperOptModel.score(X_test, y_test)
     y_hat = HyperOptModel.predict(X_test)
     print("HYPEROPT - Score: ")
-    print("MAE: %.4f" % mae)
+    print("MAE: %.4f" % score)
     # summarize the best model
     print(HyperOptModel.best_model())
     pickle.dump(HyperOptModel, open(SavePath+".pckl", 'wb'))
@@ -127,7 +120,7 @@ def applyAutoKeras(X_train, y_train, X_test, y_test, SavePath, max_trials=100, e
     AKRegressor.export_model()
     y_hat = AKRegressor.predict(X_test)
     print("AUTOKERAS - Score: ")
-    print("MAE: %.4f" % mean_absolute_error(y_hat, y_test[:,0]))
+    print("MAE: %.4f" % mean_absolute_error(y_test[:,0], y_hat))
         
     return y_hat
 
@@ -138,7 +131,7 @@ def applyACOLSTM(X_train, y_train, X_test, y_test, SavePath, antNumber=10, antTo
     final_model.save(SavePath)
 
     print("ACOLSTM - Score: ")
-    print("MAE: %.4f" % mean_absolute_error(y_hat, y_test[:,0]))
+    print("MAE: %.4f" % mean_absolute_error(y_test[:,0], y_hat))
 
     return y_hat
 
@@ -154,7 +147,9 @@ def saveResultFigure(df_inmet, genscaler, y_test, y_hats, labels, city_save_path
     ax.plot(ticks_X, genscaler.inverse_transform(y_test.reshape(-1, 1)), 'k', label='Original')
 
     for y_hat, plotlabel in zip(y_hats, labels):
-        logResults += "{0} ".format(plotlabel) + "- MAE: %.4f" % mean_absolute_error(y_hat, y_test[:,0]) + "\n"
+        logResults += "{0} ".format(plotlabel) + "- MAE: %.4f" % mean_absolute_error(y_test[:,0], y_hat) + "\n"
+        logResults += "{0} ".format(plotlabel) + "- MAPE: %.4f" % mean_squared_error(y_test[:,0], y_hat) + "\n"
+        logResults += "{0} ".format(plotlabel) + "- MSE: %.4f" % mean_absolute_percentage_error(y_test[:,0], y_hat) + "\n"
         trueScale_yhat = genscaler.inverse_transform(y_hat[-len_dt:].reshape(-1, 1))
         ax.plot(ticks_X, trueScale_yhat, label=plotlabel)
 
@@ -169,6 +164,8 @@ def saveResultFigure(df_inmet, genscaler, y_test, y_hats, labels, city_save_path
     return logResults
 
 def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
+    #TODO use already trained models
+    
     cityDir = "{0}/{1}".format(citiesRootFolder, city)
     csv_name = list(filter(lambda x: "historical" in x, os.listdir(cityDir)))[0]
     outputLog = ""
@@ -186,7 +183,7 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
 
     try:
         print("TPOT Evaluation...")
-        y_hat_tpot = applyTPOT(X_train, y_train, X_test, y_test, city_save_path+"/tpotModel_{0}".format(city), popSize=10, number_Generations=5)
+        y_hat_tpot = applyTPOT(X_train, y_train, X_test, y_test, city_save_path+"/tpotModel_{0}".format(city), popSize=10, number_Generations=10)
         y_hats.append(y_hat_tpot)
         labels.append("TPOT")
     except Exception:
@@ -194,7 +191,7 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
 
     try:
         print("HYPEROPT Evaluation...")
-        y_hat_hyperopt = applyHyperOpt(X_train, y_train, X_test, y_test, city_save_path+"/hyperoptModel_{0}".format(city), max_evals=50)
+        y_hat_hyperopt = applyHyperOpt(X_train, y_train, X_test, y_test, city_save_path+"/hyperoptModel_{0}".format(city), max_evals=100)
         y_hats.append(y_hat_hyperopt)
         labels.append("HYPEROPT")
     except Exception:
@@ -202,7 +199,7 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
     
     try:
         print("AUTOKERAS Evaluation...")
-        y_hat_autokeras = applyAutoKeras(X_train, y_train, X_test, y_test, city_save_path+"/autokerastModel_{0}".format(city), max_trials=2, epochs=50)
+        y_hat_autokeras = applyAutoKeras(X_train, y_train, X_test, y_test, city_save_path+"/autokerastModel_{0}".format(city), max_trials=10, epochs=100)
         y_hats.append(y_hat_autokeras)
         labels.append("AUTOKERAS")
     except Exception:
@@ -214,7 +211,7 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
                                                                         print_shapes = True)
     try:
         print("ACOLSTM Evaluation...")
-        y_hat_acolstm = applyACOLSTM(X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm, city_save_path+"/acolstmModel_{0}".format(city), antNumber=10, antTours=4)
+        y_hat_acolstm = applyACOLSTM(X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm, city_save_path+"/acolstmModel_{0}".format(city), antNumber=3, antTours=3)
         y_hats.append(y_hat_acolstm)
         labels.append("ACOLSTM")
     except Exception:
