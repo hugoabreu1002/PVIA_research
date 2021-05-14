@@ -17,7 +17,8 @@ import warnings
 from numpy.random import seed
 import tensorflow as tf
 import numpy as np
-from mlopt.ACOLSTM import ACOLSTM
+from mlopt.ACOLSTM import ACOLSTM, ACOCLSTM
+import traceback
 
 def loadData(csvFile, serie_column='radiacao_global_wpm2',
              exogenous_columns = ['preciptacao_total_mm', 'temp_ar_bulbo_seco_c',
@@ -124,14 +125,32 @@ def applyAutoKeras(X_train, y_train, X_test, y_test, SavePath, max_trials=100, e
         
     return y_hat
 
-def applyACOLSTM(X_train, y_train, X_test, y_test, SavePath, antNumber=10, antTours=10):
-    options_ACO={'antNumber':antNumber, 'antTours':antTours, 'alpha':1, 'beta':1, 'rho':0.5, 'Q':1}
+def applyACOLSTM(X_train, y_train, X_test, y_test, SavePath,
+                 Layers_Qtd=[[40, 50, 60, 70], [20, 25, 30], [5, 10, 15]],
+                 epochs=[100,200,300],
+                 options_ACO={'antNumber':5, 'antTours':5, 'alpha':1, 'beta':1, 'rho':0.5, 'Q':1}):
+    
     lstmOptimizer = ACOLSTM(X_train, y_train, X_test, y_test, 1 ,options_ACO=options_ACO, verbose=True)
-    final_model, y_hat = lstmOptimizer.optimize(Layers_Qtd=[[40, 50, 60, 70], [20, 25, 30], [5, 10, 15]], epochs=[100, 200, 300])
+    final_model, y_hat = lstmOptimizer.optimize(Layers_Qtd = Layers_Qtd, epochs=epochs)
     final_model.save(SavePath)
 
     print("ACOLSTM - Score: ")
-    print("MAE: %.4f" % mean_absolute_error(y_test[:,0], y_hat))
+    print("MAE: %.4f" % mean_absolute_error(y_test[:,0], y_hat[:,0]))
+
+    return y_hat
+
+def applyACOCLSTM(X_train, y_train, X_test, y_test, SavePath,
+                  Layers_Qtd=[[50, 30, 20, 10], [20, 15, 10], [10, 20], [5, 10], [2, 4]],
+                  ConvKernels=[[8, 12], [4, 6]],
+                  epochs=[10],
+                  options_ACO={'antNumber':5, 'antTours':5, 'alpha':1, 'beta':1, 'rho':0.5, 'Q':1}):
+    
+    lstmOptimizer = ACOCLSTM(X_train, y_train, X_test, y_test, 1 ,options_ACO=options_ACO, verbose=True)
+    final_model, y_hat = lstmOptimizer.optimize(Layers_Qtd = Layers_Qtd, ConvKernels = ConvKernels, epochs=epochs)
+    final_model.save(SavePath)
+
+    print("ACOLSTM - Score: ")
+    print("MAE: %.4f" % mean_absolute_error(y_test[:,0], y_hat[:,0]))
 
     return y_hat
 
@@ -147,9 +166,9 @@ def saveResultFigure(df_inmet, genscaler, y_test, y_hats, labels, city_save_path
     ax.plot(ticks_X, genscaler.inverse_transform(y_test.reshape(-1, 1)), 'k', label='Original')
 
     for y_hat, plotlabel in zip(y_hats, labels):
-        logResults += "{0} ".format(plotlabel) + "- MAE: %.4f" % mean_absolute_error(y_test[:,0], y_hat) + "\n"
-        logResults += "{0} ".format(plotlabel) + "- MAPE: %.4f" % mean_squared_error(y_test[:,0], y_hat) + "\n"
-        logResults += "{0} ".format(plotlabel) + "- MSE: %.4f" % mean_absolute_percentage_error(y_test[:,0], y_hat) + "\n"
+        logResults += "{0} ".format(plotlabel) + "- MAE: %.4f" % mean_absolute_error(y_test[:,0], y_hat[:,0]) + "\n"
+        logResults += "{0} ".format(plotlabel) + "- MAPE: %.4f" % mean_absolute_percentage_error(y_test[:,0], y_hat[:,0]) + "\n"
+        logResults += "{0} ".format(plotlabel) + "- MSE: %.4f" % mean_squared_error(y_test[:,0], y_hat[:,0]) + "\n"
         trueScale_yhat = genscaler.inverse_transform(y_hat[-len_dt:].reshape(-1, 1))
         ax.plot(ticks_X, trueScale_yhat, label=plotlabel)
 
@@ -187,6 +206,7 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
         y_hats.append(y_hat_tpot)
         labels.append("TPOT")
     except Exception:
+        traceback.print_exc()
         pass
 
     try:
@@ -195,6 +215,7 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
         y_hats.append(y_hat_hyperopt)
         labels.append("HYPEROPT")
     except Exception:
+        traceback.print_exc()
         pass
     
     try:
@@ -203,6 +224,7 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
         y_hats.append(y_hat_autokeras)
         labels.append("AUTOKERAS")
     except Exception:
+        traceback.print_exc()
         pass
 
 
@@ -211,10 +233,32 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
                                                                         print_shapes = True)
     try:
         print("ACOLSTM Evaluation...")
-        y_hat_acolstm = applyACOLSTM(X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm, city_save_path+"/acolstmModel_{0}".format(city), antNumber=3, antTours=3)
+        Layers_Qtd=[[40], [20], [10]]
+        epochs=[10]
+        options_ACO={'antNumber':1, 'antTours':1, 'alpha':1, 'beta':1, 'rho':0.5, 'Q':1}
+        y_hat_acolstm = applyACOLSTM(X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm,
+                                     city_save_path+"/acolstmModel_{0}".format(city),
+                                     Layers_Qtd, epochs, options_ACO)
         y_hats.append(y_hat_acolstm)
         labels.append("ACOLSTM")
     except Exception:
+        traceback.print_exc()
+        pass
+
+    try:
+        print("ACOCLSTM Evaluation...")
+        Layers_Qtd=[[5, 10], [10, 12], [40, 30], [20, 10], [10, 5]]
+        ConvKernels=[[2, 8], [4, 6]]
+        epochs=[200]
+        options_ACO={'antNumber':3, 'antTours':3, 'alpha':1, 'beta':1, 'rho':0.5, 'Q':1}
+        y_hat_acoclstm = applyACOCLSTM(X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm,
+                                      city_save_path+"/acoclstmModel_{0}".format(city),
+                                      Layers_Qtd, ConvKernels, epochs, options_ACO)
+        print("SHAPE HAT {0}".format(y_hat_acoclstm.shape))
+        y_hats.append(y_hat_acoclstm)
+        labels.append("ACOCLSTM")
+    except Exception:
+        traceback.print_exc()
         pass
     
     if plot:
