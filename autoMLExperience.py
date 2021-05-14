@@ -187,6 +187,8 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True):
     
     cityDir = "{0}/{1}".format(citiesRootFolder, city)
     csv_name = list(filter(lambda x: "historical" in x, os.listdir(cityDir)))[0]
+    if csv_name == "historical_data_maceio.csv":
+        csv_name = "historical_data_maceio_2.csv"
     outputLog = ""
     outputLog += "City: {0}, CSV: {1}".format(city, csv_name) + "\n"
     print("City {0}, CSV {1}".format(city, csv_name))

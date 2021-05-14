@@ -6,7 +6,7 @@ import argparse
 def main(args):
 
     os.chdir(args.inputFolder)
-    all_filenames = [i for i in glob.glob('*{0}*.csv'.format(args.city))]
+    all_filenames = [i for i in glob.glob('INMET*{0}*.csv'.format(args.city))]
 
     #combine all files in the list
     colunas = ["data", "hora", "preciptacao_total_mm", "pressao_atm_mB", "pressao_atm_max_mB",\
@@ -45,7 +45,11 @@ def main(args):
         combined_csv = combined_csv.append([df])
         
     #export to csv
-    combined_csv.to_csv("historical_data_{0}.csv".format(args.city), index=False, encoding="ISO-8859-1")
+    if os.path.isfile("historical_data_{0}.csv".format(args.city)):
+        number = len(list(filter(lambda x: "historical" in x, os.listdir("./")))) + 1
+        combined_csv.to_csv("historical_data_{0}_{1}.csv".format(args.city, number), index=False, encoding="ISO-8859-1")
+    else:
+        combined_csv.to_csv("historical_data_{0}.csv".format(args.city), index=False, encoding="ISO-8859-1")
     
 
 if __name__ == "__main__":
