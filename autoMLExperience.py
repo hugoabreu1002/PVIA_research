@@ -6,9 +6,7 @@ from sklearn.preprocessing import MaxAbsScaler
 import argparse
 import tpot
 from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error
-from hpsklearn import HyperoptEstimator
-from hpsklearn import any_regressor
-from hpsklearn import any_preprocessing
+from hpsklearn import HyperoptEstimator, any_regressor, any_preprocessing
 import pickle
 import autokeras as ak
 import os
@@ -145,8 +143,8 @@ def applyACOCLSTM(X_train, y_train, X_test, y_test, SavePath,
                   epochs=[10],
                   options_ACO={'antNumber':5, 'antTours':5, 'alpha':1, 'beta':1, 'rho':0.5, 'Q':1}):
     
-    lstmOptimizer = ACOCLSTM(X_train, y_train, X_test, y_test, 1 ,options_ACO=options_ACO, verbose=True)
-    final_model, y_hat = lstmOptimizer.optimize(Layers_Qtd = Layers_Qtd, ConvKernels = ConvKernels, epochs=epochs)
+    clstmOptimizer = ACOCLSTM(X_train, y_train, X_test, y_test, 1 ,options_ACO=options_ACO, verbose=True)
+    final_model, y_hat = clstmOptimizer.optimize(Layers_Qtd = Layers_Qtd, ConvKernels = ConvKernels, epochs=epochs)
     final_model.save(SavePath)
 
     print("ACOLSTM - Score: ")
