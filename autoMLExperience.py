@@ -1,11 +1,12 @@
 import pickle
-from mlopt.TimeSeriesUtils import train_test_split_with_Exog, MAPE, SMAPE
+from mlopt.TimeSeriesUtils import train_test_split_with_Exog, SMAPE
 from mlopt.TimeSeriesUtils import train_test_split as train_test_split_noExog
 import pandas as pd
 from sklearn.preprocessing import MaxAbsScaler
 import argparse
 import tpot
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_percentage_error as MAPE
 from hpsklearn import HyperoptEstimator, any_regressor, any_preprocessing
 import autokeras as ak
 import os
@@ -16,6 +17,7 @@ import numpy as np
 from mlopt.ACOLSTM import ACOLSTM, ACOCLSTM
 from mlopt.MMFFBleding_Regressor import AGMMFFBleding
 import traceback
+import datetime
 
 def loadData(csvFile, serie_column='radiacao_global_wpm2',
              exogenous_columns = ['preciptacao_total_mm', 'temp_ar_bulbo_seco_c',
@@ -49,7 +51,6 @@ def loadData(csvFile, serie_column='radiacao_global_wpm2',
     if np.isnan(np.sum(gen)):
         raise("Gen still has nan")
 
-    print(exog)
     for i in range(exog.shape[1]):
         ex_var = exog[:,i]
         if np.isnan(np.sum(ex_var)):
@@ -162,12 +163,16 @@ def applyACOLSTM(X_train, y_train, X_test, y_test, SavePath,
         final_model, y_hat = lstmOptimizer.optimize(Layers_Qtd = Layers_Qtd, epochs=epochs)
         final_model.save(SavePath)
     else:
-        from tensorflow import keras
-        final_model = keras.models.load_model(SavePath)
+        print(SavePath)
+        final_model = tf.keras.models.load_model(SavePath)
         y_hat = final_model.predict(X_test.reshape((X_test.shape[0], X_test.shape[1], 1)))
+
+
+    if len(y_hat.shape) > 1:
+        y_hat = y_hat[:,0]
         
     print("ACOLSTM - Score: ")
-    print("MAE: %.4f" % mean_absolute_error(y_test[:,0], y_hat[:,0]))
+    print("MAE: %.4f" % mean_absolute_error(y_test, y_hat))
 
     return y_hat
 
@@ -183,8 +188,8 @@ def applyACOCLSTM(X_train, y_train, X_test, y_test, SavePath,
         final_model, y_hat = clstmOptimizer.optimize(Layers_Qtd = Layers_Qtd, ConvKernels = ConvKernels, epochs=epochs)
         final_model.save(SavePath)
     else:
-        from tensorflow import keras
-        final_model = keras.models.load_model(SavePath)
+        print(SavePath)
+        final_model = tf.keras.models.load_model(SavePath)
         y_hat = final_model.predict(X_test.reshape((X_test.shape[0], X_test.shape[1], 1)))
         
     if len(y_hat.shape) > 1:
@@ -215,7 +220,7 @@ def applyGAMMFF(X_train, y_train, X_test, y_test, SavePath,
 
     return y_hat
 
-def saveResultFigure(df_inmet, genscaler, y_test, y_hats, labels, city_save_path):
+def saveResults(df_inmet, genscaler, y_test, y_hats, labels, city_save_path, showPlot):
     logResults = ""
     logResults += "Scores" + "\n"
     print("Scores")
@@ -240,13 +245,23 @@ def saveResultFigure(df_inmet, genscaler, y_test, y_hats, labels, city_save_path
     ax.legend(fontsize=12)
     ax.set_ylabel('W/m2', fontsize=12)
     plt.tight_layout()
-    plt.savefig(city_save_path+"/AutoMLS_result.png", dpi=300)
-    #plt.show()
+    timestamp_now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    plt.savefig(city_save_path+"/AutoMLS_result_{0}.png".format(timestamp_now), dpi=300)
 
-    return logResults
+    if showPlot:
+        plt.show()
 
-def executeForCity(city, citiesRootFolder, city_save_path, plot=True, useSavedModels=True):
-    
+    with open(city_save_path+"/results_{0}.txt".format(timestamp_now), "w") as text_file:
+        text_file.write(logResults)
+
+    print(logResults)
+
+def executeForCity(city, citiesRootFolder, plot=True, useSavedModels=True):
+
+    city_save_path = "{0}/{1}/AutoMLResults".format(citiesRootFolder, city)
+    if not os.path.isdir(city_save_path):
+        os.mkdir(city_save_path)
+            
     cityDir = "{0}/{1}".format(citiesRootFolder, city)
     csv_name = list(filter(lambda x: "historical" in x, os.listdir(cityDir)))[0]
     if csv_name == "historical_data_maceio.csv":
@@ -255,7 +270,7 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True, useSavedMo
     outputLog += "City: {0}, CSV: {1}".format(city, csv_name) + "\n"
     print("City {0}, CSV {1}".format(city, csv_name))
     
-    gen, exog, df_inmet = loadData(citiesRootFolder+city+os.sep+csv_name)
+    gen, exog, df_inmet = loadData(cityDir+os.sep+csv_name)
     gen, genscaler = scaleData(gen)
     print("scaled gen shape", gen.shape)
     exog, exogscaler = scaleData(exog)
@@ -266,60 +281,61 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True, useSavedMo
 
     np.savetxt(city_save_path+"./y_test", y_test.reshape(-1, 1), delimiter=';')
 
-    # try:
-    #     print("TPOT Evaluation...")
-    #     if not args.useSavedArrays:
-    #         y_hat_tpot = applyTPOT(X_train, y_train, X_test, y_test, city_save_path+"/tpotModel_{0}".format(city),
-    #                             popSize=10, number_Generations=10,
-    #                             useSavedModels = args.useSavedModels)
-    #         np.savetxt(city_save_path+"./y_hat_TPOT", y_hat_tpot, delimiter=';')
-    #     else:
-    #         y_hat_tpot = np.loadtxt(city_save_path+"./y_hat_TPOT", delimiter=';')
-    #     y_hats.append(y_hat_tpot)
-    #     labels.append("TPOT")
-    # except Exception:
-    #     traceback.print_exc()
-    #     pass
-
-    # try:
-    #     print("HYPEROPT Evaluation...")
-    #     if not args.useSavedArrays:
-    #         y_hat_hyperopt = applyHyperOpt(X_train, y_train, X_test, y_test, city_save_path+"/hyperoptModel_{0}".format(city),
-    #                                     max_evals=100, useSavedModels = args.useSavedModels)
-    #         np.savetxt(city_save_path+"./y_hat_HYPEROPT", y_hat_hyperopt, delimiter=';')
-    #     else:
-    #         y_hat_hyperopt = np.loadtxt(city_save_path+"./y_hat_HYPEROPT", delimiter=';')
-
-    #     y_hats.append(y_hat_hyperopt)
-    #     labels.append("HYPEROPT")
-    # except Exception:
-    #     traceback.print_exc()
-    #     pass
-    
-    # try:
-    #     print("AUTOKERAS Evaluation...")
-    #     if not args.useSavedArrays:
-    #         y_hat_autokeras = applyAutoKeras(X_train, y_train, X_test, y_test, city_save_path+"/autokerastModel_{0}".format(city),
-    #                                      max_trials=10, epochs=100, useSavedModels = args.useSavedModels)
-    #         np.savetxt(city_save_path+"./y_hat_AUTOKERAS", y_hat_autokeras, delimiter=';')
-    #     else:
-    #         y_hat_autokeras = np.loadtxt(city_save_path+"./y_hat_AUTOKERAS", delimiter=';')
+    try:
+        print("TPOT Evaluation...")
+        if not args.useSavedArrays or not os.path.isfile(city_save_path+"/y_hat_TPOT"):
+            y_hat_tpot = applyTPOT(X_train, y_train, X_test, y_test, city_save_path+"/tpotModel_{0}".format(city),
+                                popSize=10, number_Generations=10,
+                                useSavedModels = args.useSavedModels)
+            np.savetxt(city_save_path+"/y_hat_TPOT", y_hat_tpot, delimiter=';')
+        else:
+            y_hat_tpot = np.loadtxt(city_save_path+"/y_hat_TPOT", delimiter=';')
             
-    #     y_hats.append(y_hat_autokeras)
-    #     labels.append("AUTOKERAS")
-    # except Exception:
-    #     traceback.print_exc()
-    #     pass
+        y_hats.append(y_hat_tpot)
+        labels.append("TPOT")
+    except Exception:
+        traceback.print_exc()
+        pass
+
+    try:
+        print("HYPEROPT Evaluation...")
+        if not args.useSavedArrays or not os.path.isfile(city_save_path+"/y_hat_HYPEROPT"):
+            y_hat_hyperopt = applyHyperOpt(X_train, y_train, X_test, y_test, city_save_path+"/hyperoptModel_{0}".format(city),
+                                        max_evals=100, useSavedModels = args.useSavedModels)
+            np.savetxt(city_save_path+"/y_hat_HYPEROPT", y_hat_hyperopt, delimiter=';')
+        else:
+            y_hat_hyperopt = np.loadtxt(city_save_path+"/y_hat_HYPEROPT", delimiter=';')
+
+        y_hats.append(y_hat_hyperopt)
+        labels.append("HYPEROPT")
+    except Exception:
+        traceback.print_exc()
+        pass
+    
+    try:
+        print("AUTOKERAS Evaluation...")
+        if not args.useSavedArrays or not os.path.isfile(city_save_path+"/y_hat_AUTOKERAS"):
+            y_hat_autokeras = applyAutoKeras(X_train, y_train, X_test, y_test, city_save_path+"/autokerastModel_{0}".format(city),
+                                         max_trials=10, epochs=100, useSavedModels = args.useSavedModels)
+            np.savetxt(city_save_path+"/y_hat_AUTOKERAS", y_hat_autokeras, delimiter=';')
+        else:
+            y_hat_autokeras = np.loadtxt(city_save_path+"/y_hat_AUTOKERAS", delimiter=';')
+            
+        y_hats.append(y_hat_autokeras)
+        labels.append("AUTOKERAS")
+    except Exception:
+        traceback.print_exc()
+        pass
 
     try:
         print("AGMMFF Evaluation...")
-        if not args.useSavedArrays:
+        if not args.useSavedArrays or not os.path.isfile(city_save_path+"/y_hat_AGMMFF"):
             y_hat_agmmff= applyGAMMFF( X_train, y_train, X_test, y_test,
                                       city_save_path+"/mmffModel_{0}".format(city),
                                       epochs=3, size_pop=20, useSavedModels = args.useSavedModels)
-            np.savetxt(city_save_path+"./y_hat_AGMMFF", y_hat_agmmff, delimiter=';')
+            np.savetxt(city_save_path+"/y_hat_AGMMFF", y_hat_agmmff, delimiter=';')
         else:
-            y_hat_agmmff = np.loadtxt(city_save_path+"./y_hat_AGMMFF", delimiter=';')
+            y_hat_agmmff = np.loadtxt(city_save_path+"/y_hat_AGMMFF", delimiter=';')
 
         print("SHAPE HAT {0}".format(y_hat_agmmff.shape))
         y_hats.append(y_hat_agmmff)
@@ -328,54 +344,50 @@ def executeForCity(city, citiesRootFolder, city_save_path, plot=True, useSavedMo
         traceback.print_exc()
         pass
 
-    # X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm = train_test_split_noExog(gen[:,0], 23,
-    #                                                                     tr_vd_ts_percents = [80, 20],
-    #                                                                     print_shapes = args.useSavedModels)
-    # options_ACO={'antNumber':5, 'antTours':3, 'alpha':1, 'beta':1, 'rho':0.5, 'Q':1}
+    X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm = train_test_split_noExog(gen[:,0], 23,
+                                                                        tr_vd_ts_percents = [80, 20],
+                                                                        print_shapes = args.useSavedModels)
+    options_ACO={'antNumber':3, 'antTours':3, 'alpha':1, 'beta':1, 'rho':0.5, 'Q':1}
     
-    # try:
-    #     print("ACOLSTM Evaluation...")
-    #     if not args.useSavedArrays:
-    #         Layers_Qtd=[[60, 40, 30], [20, 15], [10, 7, 5]]
-    #         epochs=[200, 250, 300]        
-    #         y_hat_acolstm = applyACOLSTM(X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm,
-    #                                     city_save_path+"/acolstmModel_{0}".format(city),
-    #                                     Layers_Qtd, epochs, options_ACO, useSavedModels = args.useSavedModels)
-    #         np.savetxt(city_save_path+"./y_hat_ACOLSTM", y_hat_acolstm, delimiter=';')
-    #     else:
-    #         y_hat_acolstm = np.loadtxt(city_save_path+"./y_hat_ACOLSTM", delimiter=';')
-    #     y_hats.append(y_hat_acolstm)
-    #     labels.append("ACOLSTM")
-    # except Exception:
-    #     traceback.print_exc()
-    #     pass
+    try:
+        print("ACOLSTM Evaluation...")
+        if not args.useSavedArrays or not os.path.isfile(city_save_path+"/y_hat_ACOLSTM"):
+            Layers_Qtd=[[60, 40, 30], [20, 15], [10, 7, 5]]
+            epochs=[200, 250, 300]        
+            y_hat_acolstm = applyACOLSTM(X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm,
+                                        city_save_path+"/acolstmModel_{0}".format(city),
+                                        Layers_Qtd, epochs, options_ACO, useSavedModels = args.useSavedModels)
+            np.savetxt(city_save_path+"/y_hat_ACOLSTM", y_hat_acolstm, delimiter=';')
+        else:
+            y_hat_acolstm = np.loadtxt(city_save_path+"/y_hat_ACOLSTM", delimiter=';')
+        y_hats.append(y_hat_acolstm)
+        labels.append("ACOLSTM")
+    except Exception:
+        traceback.print_exc()
+        pass
 
-    # try:
-    #     print("ACOCLSTM Evaluation...")
-    #     if not args.useSavedArrays:
-    #         Layers_Qtd=[[40, 30], [20, 15], [40, 30], [20, 10], [10, 5]]
-    #         ConvKernels=[[8, 12], [6, 4, 3]]
-    #         epochs=[200, 250, 300]
-    #         y_hat_acoclstm = applyACOCLSTM(X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm,
-    #                                     city_save_path+"/acoclstmModel_{0}".format(city),
-    #                                     Layers_Qtd, ConvKernels, epochs, options_ACO, useSavedModels = args.useSavedModels)
+    try:
+        print("ACOCLSTM Evaluation...")
+        if not args.useSavedArrays or not os.path.isfile(city_save_path+"/y_hat_ACOCLSTM"):
+            Layers_Qtd=[[40, 30], [20, 15], [40, 30], [20, 10], [10, 5]]
+            ConvKernels=[[8, 12], [6, 4, 3]]
+            epochs=[200, 250, 300]
+            y_hat_acoclstm = applyACOCLSTM(X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm,
+                                        city_save_path+"/acoclstmModel_{0}".format(city),
+                                        Layers_Qtd, ConvKernels, epochs, options_ACO, useSavedModels = args.useSavedModels)
                 
-    #         np.savetxt(city_save_path+"./y_hat_ACOCLSTM", y_hat_acoclstm, delimiter=';')
-    #     else:
-    #         y_hat_acoclstm = np.loadtxt(city_save_path+"./y_hat_ACOCLSTM", delimiter=';')
+            np.savetxt(city_save_path+"/y_hat_ACOCLSTM", y_hat_acoclstm, delimiter=';')
+        else:
+            y_hat_acoclstm = np.loadtxt(city_save_path+"/y_hat_ACOCLSTM", delimiter=';')
 
-    #     print("SHAPE HAT {0}".format(y_hat_acoclstm.shape))
-    #     y_hats.append(y_hat_acoclstm)
-    #     labels.append("ACOCLSTM")
-    # except Exception:
-    #     traceback.print_exc()
-    #     pass
+        print("SHAPE HAT {0}".format(y_hat_acoclstm.shape))
+        y_hats.append(y_hat_acoclstm)
+        labels.append("ACOCLSTM")
+    except Exception:
+        traceback.print_exc()
+        pass
 
-    if plot:
-        outputLog += saveResultFigure(df_inmet, genscaler, y_test, y_hats, labels, city_save_path)
-
-    with open(city_save_path+"/results.txt", "w") as text_file:
-        text_file.write(outputLog)
+    saveResults(df_inmet, genscaler, y_test, y_hats, labels, city_save_path, showPlot = plot)
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -393,22 +405,18 @@ def main(args):
     useSavedModels = args.useSavedModels
 
     for city in citiesFolders:
-        cityResultsPath = "{0}/{1}/AutoMLResults".format(citiesRootFolder, city)
-        if not os.path.isdir(cityResultsPath):
-            os.mkdir(cityResultsPath)
-
-        executeForCity(city, citiesRootFolder, cityResultsPath, plot = args.plot, useSavedModels = useSavedModels)
+        executeForCity(city, citiesRootFolder, plot = args.plot, useSavedModels = useSavedModels)
     
     return None
 
 if __name__ == '__main__':
     warnings.filterwarnings("ignore")
     CLI=argparse.ArgumentParser()
-    CLI.add_argument("-crf", "--cidadesRootFolder", type=str, default="./cidades")
+    CLI.add_argument("-crf", "--cidadesRootFolder", type=str, default="./cidades", help="insert the cities folder")
     CLI.add_argument( "-l", "--listaCidades",  # name on the CLI - drop the `--` for positional/required parameters
                      nargs="*",  # 0 or more values expected => creates a list
                      type=str,
-                     default=["recife", "natal"],  # default if nothing is provided
+                     default=["maceio"],  # default if nothing is provided
                      )
     CLI.add_argument("-usm", "--useSavedModels", type=str2bool, nargs='?',const=True, default=False,
                         help="To use Saved Models, insted of starting a new training.")
