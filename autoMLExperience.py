@@ -244,8 +244,14 @@ def saveResults(df_inmet, genscaler, y_test, y_hats, labels, city_save_path, sho
 
     plt.xticks(ticks_X[::3], rotation=45, ha='right', fontsize=12)
     ax.grid(axis='x')
-    ax.legend(fontsize=12)
-    ax.set_ylabel('W/m2', fontsize=12)
+    ax.legend(fontsize=13)
+    ax.set_ylabel('W/m2', fontsize=14)
+    cidade = city_save_path.split("/")[2]
+    if cidade == "joaopessoa":
+        cidade = "João Pessoa"
+    elif cidade == "saoluis":
+        cidade = "São Luis"
+    ax.set_title(cidade.capitalize(), fontsize=14)
     plt.tight_layout()
     timestamp_now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     plt.savefig(city_save_path+"/AutoMLS_result_{0}.png".format(timestamp_now), dpi=300)
@@ -418,7 +424,7 @@ if __name__ == '__main__':
     CLI.add_argument( "-l", "--listaCidades",  # name on the CLI - drop the `--` for positional/required parameters
                      nargs="*",  # 0 or more values expected => creates a list
                      type=str,
-                     default=["teresina"],  # default if nothing is provided
+                     default=["aracaju", "fortaleza", "joaopessoa", "maceio", "natal", "recife", "salvador", "saoluis", "teresina"],  # default if nothing is provided
                      )
     CLI.add_argument("-usm", "--useSavedModels", type=str2bool, nargs='?',const=True, default=False,
                         help="To use Saved Models, insted of starting a new training.")
