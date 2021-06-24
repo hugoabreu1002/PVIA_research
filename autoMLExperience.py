@@ -162,6 +162,7 @@ def applyACOLSTM(X_train, y_train, X_test, y_test, SavePath,
         lstmOptimizer = ACOLSTM(X_train, y_train, X_test, y_test, n_variables=1 ,options_ACO=options_ACO, verbose=True)
         final_model, y_hat = lstmOptimizer.optimize(Layers_Qtd = Layers_Qtd, epochs=epochs)
         final_model.save(SavePath)
+        del lstmOptimizer
     else:
         print(SavePath)
         final_model = tf.keras.models.load_model(SavePath)
@@ -187,6 +188,7 @@ def applyACOCLSTM(X_train, y_train, X_test, y_test, SavePath,
         clstmOptimizer = ACOCLSTM(X_train, y_train, X_test, y_test, 1 ,options_ACO=options_ACO, verbose=True)
         final_model, y_hat = clstmOptimizer.optimize(Layers_Qtd = Layers_Qtd, ConvKernels = ConvKernels, epochs=epochs)
         final_model.save(SavePath)
+        del clstmOptimizer
     else:
         print(SavePath)
         final_model = tf.keras.models.load_model(SavePath)
@@ -347,7 +349,7 @@ def executeForCity(city, citiesRootFolder, plot=True, useSavedModels=True):
     X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm = train_test_split_noExog(gen[:,0], 23,
                                                                         tr_vd_ts_percents = [80, 20],
                                                                         print_shapes = args.useSavedModels)
-    options_ACO={'antNumber':3, 'antTours':3, 'alpha':1, 'beta':1, 'rho':0.5, 'Q':1}
+    options_ACO={'antNumber':3, 'antTours':5, 'alpha':1, 'beta':1, 'rho':0.5, 'Q':1}
     
     try:
         print("ACOLSTM Evaluation...")
@@ -416,7 +418,7 @@ if __name__ == '__main__':
     CLI.add_argument( "-l", "--listaCidades",  # name on the CLI - drop the `--` for positional/required parameters
                      nargs="*",  # 0 or more values expected => creates a list
                      type=str,
-                     default=["maceio"],  # default if nothing is provided
+                     default=["teresina"],  # default if nothing is provided
                      )
     CLI.add_argument("-usm", "--useSavedModels", type=str2bool, nargs='?',const=True, default=False,
                         help="To use Saved Models, insted of starting a new training.")

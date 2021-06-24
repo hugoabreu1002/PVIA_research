@@ -6,7 +6,7 @@ import argparse
 def main(args):
 
     os.chdir(args.inputFolder)
-    all_filenames = [i for i in glob.glob('INMET*{0}*.csv'.format(args.city))]
+    all_filenames = [i for i in glob.glob('INMET*{0}*.csv'.format(args.city.upper()))]
 
     #combine all files in the list
     colunas = ["data", "hora", "preciptacao_total_mm", "pressao_atm_mB", "pressao_atm_max_mB",\
