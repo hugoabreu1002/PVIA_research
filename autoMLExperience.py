@@ -324,7 +324,7 @@ def executeForCity(city, citiesRootFolder, plot=True, useSavedModels=True):
         print("AUTOKERAS Evaluation...")
         if not args.useSavedArrays or not os.path.isfile(city_save_path+"/y_hat_AUTOKERAS"):
             y_hat_autokeras = applyAutoKeras(X_train, y_train, X_test, y_test, city_save_path+"/autokerastModel_{0}".format(city),
-                                         max_trials=10, epochs=100, useSavedModels = args.useSavedModels)
+                                         max_trials=10, epochs=300, useSavedModels = args.useSavedModels)
             np.savetxt(city_save_path+"/y_hat_AUTOKERAS", y_hat_autokeras, delimiter=';')
         else:
             y_hat_autokeras = np.loadtxt(city_save_path+"/y_hat_AUTOKERAS", delimiter=';')
@@ -355,7 +355,7 @@ def executeForCity(city, citiesRootFolder, plot=True, useSavedModels=True):
     X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm = train_test_split_noExog(gen[:,0], 23,
                                                                         tr_vd_ts_percents = [80, 20],
                                                                         print_shapes = args.useSavedModels)
-    options_ACO={'antNumber':3, 'antTours':5, 'alpha':1, 'beta':1, 'rho':0.5, 'Q':1}
+    options_ACO={'antNumber':4, 'antTours':5, 'alpha':1, 'beta':1, 'rho':0.5, 'Q':1}
     
     try:
         print("ACOLSTM Evaluation...")
@@ -377,9 +377,9 @@ def executeForCity(city, citiesRootFolder, plot=True, useSavedModels=True):
     try:
         print("ACOCLSTM Evaluation...")
         if not args.useSavedArrays or not os.path.isfile(city_save_path+"/y_hat_ACOCLSTM"):
-            Layers_Qtd=[[40, 30], [20, 15], [40, 30], [20, 10], [10, 5]]
-            ConvKernels=[[8, 12], [6, 4, 3]]
-            epochs=[200, 250, 300]
+            Layers_Qtd=[[60, 40], [30, 15], [40, 30], [25, 20], [5, 4]]
+            ConvKernels=[[8, 12], [6, 4]]
+            epochs=[300]
             y_hat_acoclstm = applyACOCLSTM(X_train_lstm, y_train_lstm, X_test_lstm, y_test_lstm,
                                         city_save_path+"/acoclstmModel_{0}".format(city),
                                         Layers_Qtd, ConvKernels, epochs, options_ACO, useSavedModels = args.useSavedModels)
@@ -424,8 +424,8 @@ if __name__ == '__main__':
     CLI.add_argument( "-l", "--listaCidades",  # name on the CLI - drop the `--` for positional/required parameters
                      nargs="*",  # 0 or more values expected => creates a list
                      type=str,
-                     default=["aracaju", "fortaleza", "joaopessoa", "maceio", "natal", "recife", "salvador", "saoluis", "teresina"],  # default if nothing is provided
-                     )
+                     default=["aracaju", "maceio", "joaopessoa", "fortaleza","natal", "recife", "salvador", "saoluis", "teresina"])
+                    # default=["aracaju", "maceio", "joaopessoa", "fortaleza","natal", "recife", "salvador", "saoluis", "teresina"]
     CLI.add_argument("-usm", "--useSavedModels", type=str2bool, nargs='?',const=True, default=False,
                         help="To use Saved Models, insted of starting a new training.")
 
