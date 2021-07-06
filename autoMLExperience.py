@@ -256,8 +256,8 @@ def saveResults(df_inmet, genscaler, y_test, y_hats, labels, city_save_path, sho
     elif cidade == "maceio":
         cidade = "Maceió"
     ax.set_title(cidade.capitalize(), fontsize=14)
-    plt.tight_layout()
     timestamp_now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    plt.tight_layout()
     plt.savefig(city_save_path+"/AutoMLS_result_{0}.png".format(timestamp_now), dpi=300)
 
     if showPlot:
