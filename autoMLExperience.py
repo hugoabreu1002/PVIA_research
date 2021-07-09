@@ -67,32 +67,31 @@ def scaleData(data):
 
 
 def applyTPOT(X_train, y_train, X_test, y_test, SavePath, popSize=20,
-              number_Generations=5, kFolders=5, TPOTSingleMinutes=1,
+              number_Generations=5, kFolders=0, TPOTSingleMinutes=1,
               TPOTFullMinutes = 10, useSavedModels = True):
     if not useSavedModels or not os.path.isfile(SavePath):
         pipeline_optimizer = tpot.TPOTRegressor(generations=number_Generations, #number of iterations to run the training
                                                 population_size=popSize, #number of individuals to train
                                                 cv=kFolders, #number of folds in StratifiedKFold
                                                 max_eval_time_mins=TPOTSingleMinutes, #time in minutes for each trial
-                                                max_time_mins=TPOTFullMinutes,
-                                                scoring="neg_mean_absolute_error") #time in minutes for whole optimization
+                                                max_time_mins=TPOTFullMinutes, #time in minutes for whole optimization
+                                                scoring="neg_mean_absolute_error") 
         
         pipeline_optimizer.fit(X_train, y_train) #fit the pipeline optimizer - can take a long time
         pipeline_optimizer.export(SavePath)
         
     else:
         print("######### PLACE THE EXPORTED PIPELINE CODE HERE ########")
-        from sklearn.ensemble import ExtraTreesRegressor
-        from sklearn.pipeline import make_pipeline
-        from sklearn.preprocessing import PolynomialFeatures
+        # from sklearn.ensemble import ExtraTreesRegressor
+        # from sklearn.pipeline import make_pipeline
+        # from sklearn.preprocessing import PolynomialFeatures
 
-        # Average CV score on the training set was: -0.04784394817861738
-        pipeline_optimizer = make_pipeline(
-            PolynomialFeatures(degree=2, include_bias=False, interaction_only=False),
-            ExtraTreesRegressor(bootstrap=False, max_features=0.5, min_samples_leaf=12, min_samples_split=13, n_estimators=100)
-        )
-
-        pipeline_optimizer.fit(X_train, y_train)
+        # # Average CV score on the training set was: -0.04784394817861738
+        # pipeline_optimizer = make_pipeline(
+        #     PolynomialFeatures(degree=2, include_bias=False, interaction_only=False),
+        #     ExtraTreesRegressor(bootstrap=False, max_features=0.5, min_samples_leaf=12, min_samples_split=13, n_estimators=100)
+        # )
+        # pipeline_optimizer.fit(X_train, y_train)
         
     print("TPOT - Score: {0}".format(-pipeline_optimizer.score(X_test, y_test)))
     y_hat = pipeline_optimizer.predict(X_test)
