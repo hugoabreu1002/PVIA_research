@@ -12,6 +12,7 @@ __pycache__/
 link_drive_marinho.txt
 maceio/report.log
 **/*.log
+**/*.png
 **/AutoMLResults/
 **/structured_data_regressor/
 **/auto_model/
