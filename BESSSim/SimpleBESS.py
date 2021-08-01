@@ -6,8 +6,9 @@ class SimpleBEES(object):
         super().__init__()
         self._CostAndDemandFile = CostAndDemandFile
 
-    def simulate(self, R_true, R_pred, solarRadeFi=0.15, DemandData=None, DemandFactor=0.3, State_of_Chage_I=0.5, State_of_Chage_F = 0.5):
-        """
+    def simulate(self, R_true, R_pred, solarRadeFi=0.15, DemandData=None, DemandFactor=0.3, State_of_Chage_I=0.5, State_of_Chage_F = 1.0, type='f'):
+        #TODO update description
+        """ 
             Charge_data: The data of the charge on the BESS, if None, uses the data loaded by the CostAndDemandFile.
             Default = None.
 
@@ -16,36 +17,66 @@ class SimpleBEES(object):
         if DemandData == None:
             self.loadCostAndDemandCurves(DemandFactor)
         else:
-            self._DemandData = DemandData
-        
-        R_true = R_true
-        R_pred = R_pred
+            self._DemandData = DemandData*DemandFactor
 
-        power_generated_pred = solarRadeFi*R_pred
-        power_generated_true = solarRadeFi*R_true
+        if type=='f':
+            power_generated_pred = solarRadeFi*R_pred
+            power_generated_true = solarRadeFi*R_true
 
-        batery_charge_pred = np.zeros(len(self._DemandData))
-        batery_charge_true = np.zeros(len(self._DemandData))
-        batery_charge_pred[0] = State_of_Chage_I
-        batery_charge_true[0] = State_of_Chage_I
-        
-        for i in range(1, len(self._DemandData)):
-
-            batery_charge_pred[i] = batery_charge_pred[i-1] + power_generated_pred[i] - self._DemandData[i]
-            batery_charge_true[i] = batery_charge_true[i-1] + power_generated_true[i] - self._DemandData[i]
-
-            if batery_charge_pred[i] < 0:
-                batery_charge_pred[i] = 0
-                
-            if batery_charge_true[i] < 0:
-                batery_charge_true[i] = 0
-
-            if batery_charge_pred[i] > 1 :
-                batery_charge_pred[i] = 1
-                
-            if batery_charge_true[i] > 1:
-                batery_charge_true[i] = 1
+            batery_charge_pred = np.zeros(len(self._DemandData))
+            batery_charge_true = np.zeros(len(self._DemandData))
+            batery_charge_pred[0] = State_of_Chage_I
+            batery_charge_true[0] = State_of_Chage_I
             
+            for i in range(1, len(self._DemandData)):
+
+                batery_charge_pred[i] = batery_charge_pred[i-1] + power_generated_pred[i] - self._DemandData[i]
+                batery_charge_true[i] = batery_charge_true[i-1] + power_generated_true[i] - self._DemandData[i]
+
+                if batery_charge_pred[i] < 0:
+                    batery_charge_pred[i] = 0
+                    
+                if batery_charge_true[i] < 0:
+                    batery_charge_true[i] = 0
+
+                if batery_charge_pred[i] > 1:
+                    batery_charge_pred[i] = 1
+                    
+                if batery_charge_true[i] > 1:
+                    batery_charge_true[i] = 1
+        #TODO type control
+        if type == 'm':
+            power_generated_pred = solarRadeFi*R_pred
+            power_generated_true = solarRadeFi*R_true
+
+            peak_radiation = np.argmax(power_generated_true)
+
+            batery_charge_pred = np.zeros(len(self._DemandData))
+            batery_charge_true = np.zeros(len(self._DemandData))
+            batery_charge_pred[0] = State_of_Chage_I
+            batery_charge_true[0] = State_of_Chage_I
+            
+            for i in range(1, len(self._DemandData)):
+                
+                batery_charge_pred[i] = batery_charge_pred[i-1] + power_generated_pred[i] - self._DemandData[i]
+                batery_charge_true[i] = batery_charge_true[i-1] + power_generated_true[i] - self._DemandData[i]
+
+                if (batery_charge_true[i-1] >= State_of_Chage_F) and (self._DemandData[i] >= power_generated_true[i]) and i>peak_radiation:
+                    batery_charge_true[i] = State_of_Chage_F
+                    batery_charge_pred[i] = State_of_Chage_F
+
+                if batery_charge_pred[i] < 0:
+                    batery_charge_pred[i] = 0
+                    
+                if batery_charge_true[i] < 0:
+                    batery_charge_true[i] = 0
+
+                if batery_charge_pred[i] > 1:
+                    batery_charge_pred[i] = 1
+                    
+                if batery_charge_true[i] > 1:
+                    batery_charge_true[i] = 1
+                    
         return batery_charge_true, batery_charge_pred
 
     def syncDemand(self):
