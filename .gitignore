@@ -10,9 +10,10 @@
 **/colect_from_apac_ftp.exe
 **/*.pdf
 link_drive_marinho.txt
-maceio/report.log
 **/*.log
 **/*.png
+**/*.xls
+**/*.xlsx
 **/AutoMLResults/
 **/structured_data_regressor/
 **/auto_model/
