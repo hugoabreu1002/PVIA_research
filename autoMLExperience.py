@@ -56,7 +56,7 @@ def loadData(csvFile, serie_column='radiacao_global_wpm2',
         ex_var = exog[:,i]
         if np.isnan(np.sum(ex_var)):
             print("exog still has nan in column {0}".format(i))
-            raise
+            raise ValueError("Exog has nan in column")
     
     return gen, exog, df_inmet
 
