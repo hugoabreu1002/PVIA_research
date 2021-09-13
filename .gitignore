@@ -18,3 +18,4 @@ link_drive_marinho.txt
 **/structured_data_regressor/
 **/auto_model/
 .vscode/settings.json
+**/*.pyc

@@ -1,6 +1,6 @@
 import pickle
-from mlopt.timeseries.TimeSeriesUtils import train_test_split_with_Exog, SMAPE
-from mlopt.timeseries.TimeSeriesUtils import train_test_split as train_test_split_noExog
+from mlopt.mlopt.timeseries.TimeSeriesUtils import train_test_split_with_Exog, SMAPE
+from mlopt.mlopt.timeseries.TimeSeriesUtils import train_test_split as train_test_split_noExog
 import pandas as pd
 from sklearn.preprocessing import MaxAbsScaler
 import argparse
@@ -15,8 +15,8 @@ from matplotlib import pyplot as plt
 import warnings
 import tensorflow as tf
 import numpy as np
-from mlopt.omodels.ACOLSTM import ACOLSTM, ACOCLSTM
-from mlopt.omodels.MMFFBleding_Regressor import AGMMFFBleding
+from mlopt.mlopt.omodels.ACOLSTM import ACOLSTM, ACOCLSTM
+from mlopt.mlopt.omodels.MMFFBleding_Regressor import AGMMFFBleding
 import traceback
 import datetime
 
@@ -55,7 +55,8 @@ def loadData(csvFile, serie_column='radiacao_global_wpm2',
     for i in range(exog.shape[1]):
         ex_var = exog[:,i]
         if np.isnan(np.sum(ex_var)):
-            raise("exog still has nan in column {0}".format(i))
+            print("exog still has nan in column {0}".format(i))
+            raise
     
     return gen, exog, df_inmet
 
