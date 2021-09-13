@@ -1,6 +1,6 @@
 import pickle
-from mlopt.TimeSeriesUtils import train_test_split_with_Exog, SMAPE
-from mlopt.TimeSeriesUtils import train_test_split as train_test_split_noExog
+from mlopt.timeseries.TimeSeriesUtils import train_test_split_with_Exog, SMAPE
+from mlopt.timeseries.TimeSeriesUtils import train_test_split as train_test_split_noExog
 import pandas as pd
 from sklearn.preprocessing import MaxAbsScaler
 import argparse
@@ -15,8 +15,8 @@ from matplotlib import pyplot as plt
 import warnings
 import tensorflow as tf
 import numpy as np
-from mlopt.ACOLSTM import ACOLSTM, ACOCLSTM
-from mlopt.MMFFBleding_Regressor import AGMMFFBleding
+from mlopt.omodels.ACOLSTM import ACOLSTM, ACOCLSTM
+from mlopt.omodels.MMFFBleding_Regressor import AGMMFFBleding
 import traceback
 import datetime
 
