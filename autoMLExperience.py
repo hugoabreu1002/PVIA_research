@@ -16,7 +16,7 @@ import warnings
 import tensorflow as tf
 import numpy as np
 from mlopt.mlopt.omodels.ACOLSTM import ACOLSTM, ACOCLSTM
-from mlopt.mlopt.omodels.MMFFBleding_Regressor import AGMMFFBleding
+from mlopt.mlopt.omodels.MMFFBlending_Regressor import AGMMFFBlending
 import traceback
 import datetime
 
@@ -207,7 +207,7 @@ def applyACOCLSTM(X_train, y_train, X_test, y_test, SavePath,
 def applyGAMMFF(X_train, y_train, X_test, y_test, SavePath,
                   epochs=5, size_pop=40, useSavedModels = True):
 
-    agMMGGBlending = AGMMFFBleding(X_train, y_train, X_test, y_test, epochs=epochs, size_pop=size_pop)
+    agMMGGBlending = AGMMFFBlending(X_train, y_train, X_test, y_test, epochs=epochs, size_pop=size_pop)
     if not useSavedModels or not os.path.isfile(SavePath+".pckl"):
         final_models, final_blender = agMMGGBlending.train()
         y_hat = agMMGGBlending.predict(X_test=X_test, blender=final_blender, models=final_models)
