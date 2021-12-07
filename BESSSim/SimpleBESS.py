@@ -12,6 +12,8 @@ class SimpleBEES(object):
             Charge_data: The data of the charge on the BESS, if None, uses the data loaded by the CostAndDemandFile.
             Default = None.
 
+            type: chose 'f' for "free" where the initial and final states doesnt matter. chose 'm' for maximum level o state at the end.
+
             returns power_flux_true, power_flux_pred
         """
         if DemandData == None:
@@ -44,7 +46,7 @@ class SimpleBEES(object):
                     
                 if batery_charge_true[i] > 1:
                     batery_charge_true[i] = 1
-        #TODO type control
+        
         if type == 'm':
             power_generated_pred = solarRadeFi*R_pred
             power_generated_true = solarRadeFi*R_true
