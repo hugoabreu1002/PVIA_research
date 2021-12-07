@@ -9,7 +9,6 @@
 **/metrics/
 **/colect_from_apac_ftp.exe
 **/*.pdf
-link_drive_marinho.txt
 **/*.log
 **/*.png
 **/*.xls
@@ -19,3 +18,5 @@ link_drive_marinho.txt
 **/auto_model/
 .vscode/settings.json
 **/*.pyc
+cidades/bomjesusdalapa/INMET_NE_BA_A418_BOM JESUS DA LAPA_01-01-2020_A_31-07-2020.CSV
+cidades/floripa/INMET_S_SC_A806_FLORIANOPOLIS_01-01-2020_A_31-07-2020.CSV
